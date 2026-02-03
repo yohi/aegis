@@ -377,7 +377,9 @@ const Aegis: Plugin = async (ctx) => {
   const { directory, worktree, $ } = ctx;
   const rootDir = worktree || directory;
   
-  const configTargets = (ctx.project?.targetTools as string[]) || TARGET_TOOLS;
+  const configTargets = (Array.isArray(ctx.project?.targetTools) && ctx.project.targetTools.every(t => typeof t === "string"))
+    ? ctx.project.targetTools as string[] 
+    : TARGET_TOOLS;
 
   await deployCommands(rootDir, false).catch(() => {});
 
