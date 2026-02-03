@@ -540,7 +540,7 @@ Report findings in a structured format.
 `DESIGN.md` の「3. セキュリティモデルと既知の制約」セクションです。
 **変更点 (P2):** Permission 設定に関する注釈を追加し、ワイルドカード非対応環境への配慮を記述。
 
-~~~markdown
+````markdown
 # OpenCode Plugin: Aegis - Design & Specification
 
 **Version:** 1.0.16 (Gold Release - Rev.16)
@@ -601,5 +601,5 @@ Aegis は初回起動時に、補助コマンド（`aegis-doctor` 等）を `.op
 ### 3.3. Argument Normalization (One-Way)
 
 Aegis は互換性維持のため、`skills` 引数が存在する場合、それを `load_skills` に統合し、元の `skills` 引数を削除します（片方向正規化）。
-~~~
+````
 
