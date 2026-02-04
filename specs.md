@@ -9,7 +9,7 @@
 ```javascript
 // scripts/verify-pack.cjs
 // [AEGIS FINAL] Gold Release (Rev.16)
-// Usage: node scripts/verify-pack.cjs (Silent verification for prepublish)
+// Usage: node scripts/verify-pack.cjs (Standard verification for prepublish)
 
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -84,6 +84,7 @@ safeStderr('[Aegis] Verifying package payload (Assets & Dist)...');
 
 // 1. npm pack --dry-run
 const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+// NOTE: Parsing stdout is fragile across npm versions. Consider --json in future.
 const r = spawnSync(cmd, ['pack', '--dry-run'], { 
   cwd: projectRoot,
   encoding: 'utf8', 
@@ -92,7 +93,8 @@ const r = spawnSync(cmd, ['pack', '--dry-run'], {
 
 if (r.error || r.status !== 0) {
   safeStderr('FATAL: npm pack failed.');
-  writePanicLog(`npm pack failed. Stderr: ${truncateOutput(r.stderr)}`);
+  const errInfo = r.error ? `\nError: ${r.error.message}\nStack: ${r.error.stack}` : '';
+  writePanicLog(`npm pack failed.${errInfo}\nStdout: ${truncateOutput(r.stdout || '')}\nStderr: ${truncateOutput(r.stderr || '')}`);
   process.exit(1);
 }
 
@@ -329,6 +331,7 @@ export async function deployCommands(targetRoot: string, force: boolean = false)
   try {
     const targetCmdDir = path.join(targetRoot, ".opencode", "commands");
     
+    // force=false の場合は既存チェックを行い、存在すればスキップ（上書きしない）
     if (!force && await isDeployed(targetCmdDir)) {
       return; 
     }
@@ -339,6 +342,7 @@ export async function deployCommands(targetRoot: string, force: boolean = false)
     const files = await fs.readdir(assetsDir);
     for (const file of files) {
       if (file.endsWith(".md") || file === ".aegis-sentinel") {
+        // force=true の場合は常に上書きコピー（ただし完全同期・削除は行わない）
         await fs.copyFile(path.join(assetsDir, file), path.join(targetCmdDir, file));
       }
     }
@@ -509,12 +513,26 @@ description: Refines a project plan using strict validation rules.
 
 You are an expert architect tasked with refining a project plan.
 Validate the plan against the following criteria:
-1. Feasibility
-2. Clarity of deliverables
-3. Risk assessment
+1. Feasibility (Technical & Resource)
+2. Clarity of deliverables (SMART criteria)
+3. Risk assessment (Mitigation strategies)
 
-Output the refined plan.
+## Output Format
 
+Please output the refined plan in the following Markdown format:
+
+```markdown
+# Refined Project Plan
+
+## 1. Executive Summary
+(Brief overview of changes and validation results)
+
+## 2. Refined Steps
+(Detailed steps with clear deliverables)
+
+## 3. Risk Analysis
+- [High/Medium/Low] Risk: Mitigation strategy
+```
 ```
 
 ### `assets/commands/aegis-doctor.md`
@@ -527,13 +545,34 @@ description: Diagnoses the current environment and project state.
 # Aegis Doctor
 
 Analyze the current workspace for:
-- Uncommitted changes
-- Missing dependencies
-- Potential configuration conflicts
+- Uncommitted changes (git status)
+- Missing dependencies (package.json vs node_modules)
+- Potential configuration conflicts (.env, config files)
+- Directory structure anomalies
 
-Report findings in a structured format.
+## Output Format
 
+Report findings in the following JSON format for machine readability:
+
+```json
+{
+  "status": "healthy|warning|critical",
+  "issues": [
+    {
+      "severity": "info|warn|error",
+      "category": "git|deps|config",
+      "message": "Description of the issue",
+      "suggestion": "How to fix it"
+    }
+  ],
+  "env": {
+    "node": "version",
+    "platform": "os"
+  }
+}
 ```
+
+
 
 ---
 
@@ -553,6 +592,21 @@ Report findings in a structured format.
 
 **Aegis** は、OpenCode プラグインエコシステムにおいて、npm パッケージの整合性を検証し、その実行コンテキストを安全かつ強力に拡張するための統合セキュリティ・プラットフォームです。
 
+### 1.1. Installation & Setup
+
+`opencode.json` に以下を追加して有効化します。
+また、Peer Dependencies として `oh-my-opencode` および `superpowers` の導入を推奨します。
+
+```json
+{
+  "plugins": {
+    "aegis": {
+      "package": "opencode-plugin-aegis"
+    }
+  }
+}
+```
+
 ## 2. アーキテクチャと設計哲学
 
 ### 2.1. The Trinity: Context, Power, and Safety (三位一体)
@@ -565,8 +619,19 @@ Aegis は、以下の2つのプラグインと併用されることで、シス�
 
 ### 2.2. Robust & Dynamic Skill Resolution (Rev.16)
 
-Aegis は、ディレクトリ構造に基づいた「相対パス（例: `superpowers/brainstorming`）」をロードIDとして優先的に使用します。
-ファイルの実在確認のみで高速に解決し、同名のスキルが存在する場合は **名前空間付き（`superpowers/*`）** のものが優先して選択されます。
+Aegis は、ディレクトリ構造に基づいた「相対パス」をロードIDとして使用します。
+パフォーマンス確保のため、解決結果はキャッシュされますが、`installation.updated` イベント（プラグイン更新や設定変更）発生時にキャッシュはクリアされ、再スキャンが行われます。これにより、動的な変更への追随と高速な動作を両立しています。
+
+### 2.3. Target Tool Configuration
+
+Aegis はデフォルトで `sisyphus_task` および `delegate_task` を介入対象とします。
+この対象は `opencode.json` の `targetTools` プロパティでカスタマイズ可能です。
+
+```json
+{
+  "targetTools": ["sisyphus_task", "delegate_task", "my_custom_task"]
+}
+```
 
 ## 3. セキュリティモデルと既知の制約 (Security & Limitations)
 
@@ -591,13 +656,21 @@ Aegis のフック介入は補助的なものであり、完全なセキュリ�
 
 *注: 環境によってはワイルドカード（`*`）が期待通りに機能しない場合があります。その場合は、`"superpowers/brainstorming": "allow"` のように完全一致で指定してください。*
 
-### 3.2. Repository Hygiene
+**Injection Bypass:**
+プロンプトの先頭に `__AEGIS_INJECTED_v1__` マーカーが含まれる場合、Aegis は二重注入防止のために介入をスキップします。
+ユーザーが意図的にこのマーカーを付与することで、Aegis の介入を回避（Opt-out）することが可能です。これはデバッグや高度な制御のための仕様です。
+
+### 3.2. Repository Hygiene & Safety
 
 Aegis は初回起動時に、補助コマンド（`aegis-doctor` 等）を `.opencode/commands/` に配置します。
-リポジトリの汚染を防ぐため、`.gitignore` に以下を追加することを強く推奨します。
+以下の点に注意してください。
+
+1. **ファイルの上書き:** プラグイン更新時（`installation.updated`）やデプロイ時には、同名ファイルが警告なく上書きされます。このディレクトリ内のファイルを手動で変更しないでください。
+2. **Git Ignore:** リポジトリの汚染を防ぐため、`.gitignore` に以下を追加することを強く推奨します。
 
 ```text
 .opencode/commands/
+aegis-panic.log
 ```
 
 ### 3.3. Argument Normalization (One-Way)
