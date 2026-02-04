@@ -571,7 +571,6 @@ Report findings in the following JSON format for machine readability:
   }
 }
 ```
-```
 
 
 
