@@ -414,8 +414,8 @@ const tools = [
         "rules": []
       },
       "configIntegrity": {
-        "enabled": true
-      }
+        "enabled": true,
+        "action": "reload"
     },
     "telemetry": {
       "enabled": false,
@@ -530,7 +530,9 @@ v1 の `__AEGIS_INJECTED_v1__` マーカー文字列を、HMAC-SHA256 署名に�
 各フック実行時:
   1. 現在の opencode.json を再読み込み
   2. チェックサム再計算 → 保持値と比較
-  3. 不一致: 監査ログ出力 + 設定再読み込み or 拒否 (configIntegrity 設定による)
+  3. 不一致: 監査ログ出力 + configIntegrity.action に応じた処理:
+     - action="reload": 設定を再読み込みして最新の設定を適用
+     - action="reject": エラーをthrowして処理を中断
 ```
 
 ### 2.7 Testing (テスト・品質)
@@ -744,6 +746,7 @@ export interface AegisConfig {
     policy: PolicyConfig;
     configIntegrity: {
       enabled: boolean;
+      action: "reload" | "reject";
     };
   };
 
@@ -986,6 +989,61 @@ export class SecurityLayer {
 
   /** 設定チェックサムを更新 */
   updateChecksum(config: unknown): void;
+}
+```
+
+#### 4.5.1 設定改ざん検出の実装例
+
+```typescript
+export class SecurityLayer {
+  private configChecksum: string | null = null;
+  
+  constructor(private config: AegisConfig["security"]) {
+    // 初期化時にチェックサムを計算
+    this.configChecksum = this.computeChecksum(config);
+  }
+  
+  /**
+   * 設定整合性を検証し、改ざん検出時にactionに応じた処理を実行
+   * @throws {AegisConfigError} action="reject"の場合、改ざん検出時にエラーをthrow
+   */
+  async verifyAndHandleConfigIntegrity(
+    currentConfig: AegisConfig,
+    auditLogger: AuditLogger
+  ): Promise<void> {
+    if (!this.config.configIntegrity.enabled) {
+      return;
+    }
+    
+    const currentChecksum = this.computeChecksum(currentConfig.security);
+    
+    if (currentChecksum !== this.configChecksum) {
+      // 監査ログ出力
+      auditLogger.log("config_tamper", {
+        previousChecksum: this.configChecksum,
+        currentChecksum,
+        action: this.config.configIntegrity.action,
+      });
+      
+      // actionに応じた処理
+      if (this.config.configIntegrity.action === "reload") {
+        // 設定を再読み込み
+        this.config = currentConfig.security;
+        this.configChecksum = currentChecksum;
+      } else if (this.config.configIntegrity.action === "reject") {
+        // エラーをthrowして処理を中断
+        throw new AegisConfigError(
+          "Configuration tampering detected. Execution aborted."
+        );
+      }
+    }
+  }
+  
+  private computeChecksum(config: unknown): string {
+    const crypto = require("crypto");
+    const normalized = JSON.stringify(config, Object.keys(config).sort());
+    return crypto.createHash("sha256").update(normalized).digest("hex");
+  }
 }
 ```
 
