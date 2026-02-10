@@ -76,7 +76,7 @@ Create `.devcontainer/devcontainer.json` with the following configuration:
 ```json
 {
   "name": "aegis-v2-dev",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24",
   "customizations": {
     "vscode": {
       "extensions": [

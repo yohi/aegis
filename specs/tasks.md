@@ -1,4 +1,10 @@
 # Tasks
-* [ ] v2-overhaul-1: 基本実装 (Scope: `v2-overhaul`)
-* [ ] v2-overhaul-2: テスト実装 (Scope: `v2-overhaul`)
-* [ ] v2-overhaul-3: ドキュメント更新 (Scope: `v2-overhaul`)
+* [ ] v2-config-1: 設定スキーマ定義・バリデーション・デフォルトマージ実装 (Scope: `v2-overhaul`)
+* [ ] v2-mode-1: ルールベースモード判定エンジン実装 (Scope: `v2-overhaul`)
+* [ ] v2-skill-1: スキル解決の外部設定化・優先度・キャッシュ・テレメトリ実装 (Scope: `v2-overhaul`)
+* [ ] v2-asset-1: バージョン管理付きアセットデプロイ・ロールバック・マージ戦略実装 (Scope: `v2-overhaul`)
+* [ ] v2-pluginapi-1: フック拡張・ライフサイクル・ツール登録・イベントバス実装 (Scope: `v2-overhaul`)
+* [ ] v2-security-1: 暗号署名・監査ログ・ポリシーエンジン・改ざん検知実装 (Scope: `v2-overhaul`)
+* [ ] v2-testing-1: Vitest テスト基盤・ユニットテスト・統合テスト実装 (Scope: `v2-overhaul`)
+* [ ] v2-ci-1: GitHub Actions CI/CD パイプライン構築 (Scope: `v2-overhaul`)
+* [ ] v2-entry-1: プラグインエントリポイント統合 (Scope: `v2-overhaul`)
