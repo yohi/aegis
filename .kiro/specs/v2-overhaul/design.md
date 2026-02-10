@@ -12,7 +12,7 @@
 
 ### 1.1 アーキテクチャ概要図
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    OpenCode Host Runtime                        │
 │  ┌───────────────────────────────────────────────────────────┐  │
@@ -78,7 +78,7 @@
 
 ### 1.3 初期化フロー
 
-```
+```text
 Plugin Load
   │
   ├─1→ ConfigManager.load(opencode.json)     [REQ-CFG-001/002/003]
@@ -121,7 +121,7 @@ v1 のキーワードマッチングを、拡張可能なルールベースエ�
 
 #### 2.1.2 ルール評価フロー
 
-```
+```text
 Prompt Input
   │
   ├─1→ ルールリスト取得 (built-in + custom from config)
@@ -185,7 +185,7 @@ Prompt Input
 
 #### 2.2.2 スキル解決フロー
 
-```
+```text
 Mode (from ModeEngine)
   │
   ├─1→ SkillMap 取得 (config.aegis.skills.map)        [REQ-SKILL-001]
@@ -251,7 +251,7 @@ v1 の Sentinel ベースのデプロイを、バージョン管理・ロール�
 
 #### 2.3.2 バージョン管理
 
-```
+```text
 assets/commands/
   ├── .aegis-manifest.json    ← NEW: バージョン + チェックサム管理
   ├── .aegis-sentinel
@@ -297,7 +297,7 @@ assets/commands/
 
 #### 2.3.5 ロールバック機構
 
-```
+```text
 .opencode/commands/.aegis-history/
   ├── 1.0.16/                    ← 旧バージョンバックアップ
   │   ├── .aegis-manifest.json
@@ -313,7 +313,7 @@ assets/commands/
 
 #### 2.4.1 Hook ライフサイクル
 
-```
+```text
                     Plugin Lifecycle
                     ═══════════════
    ┌─────────────────────────────────────────────────┐
@@ -427,7 +427,7 @@ const tools = [
 
 #### 2.5.2 バリデーション戦略
 
-```
+```text
 opencode.json 読み込み
   │
   ├─1→ JSON パース
@@ -460,7 +460,7 @@ opencode.json 読み込み
 
 v1 の `__AEGIS_INJECTED_v1__` マーカー文字列を、HMAC-SHA256 署名に置換する。
 
-```
+```text
 注入フロー:
   1. セッション開始時にランダムシークレット生成 (session-scoped)
   2. プロンプト注入時:
@@ -522,7 +522,7 @@ v1 の `__AEGIS_INJECTED_v1__` マーカー文字列を、HMAC-SHA256 署名に�
 
 #### 2.6.4 設定ファイル改ざん検知
 
-```
+```text
 初期化時:
   1. opencode.json の aegis セクションのチェックサム (SHA-256) を計算
   2. メモリに保持
@@ -540,7 +540,7 @@ v1 の `__AEGIS_INJECTED_v1__` マーカー文字列を、HMAC-SHA256 署名に�
 
 #### 2.7.1 テスト構造
 
-```
+```text
 test/
   ├── unit/
   │   ├── mode-engine.test.ts        ← REQ-MODE-* テスト
