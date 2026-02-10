@@ -45,7 +45,7 @@ SDD (Spec-Driven Development) に完全準拠し、`requirements.md`, `design.md
   - **Verification**: `cat .kiro/specs/v2-overhaul/tasks.md` matches expected content.
   - **Acceptance Criteria**:
     - [ ] `tasks.md` updated with v2-* tasks.
-    - [ ] `sdd_sync_kiro` executed to reflect changes in root `tasks.md`.
+    - [ ] `sdd_sync_kiro` executed to reflect changes in root `tasks.md`. *(NOTE: SDD フレームワーク組込みツール。手動実行: `sdd_sync_kiro` コマンドを呼び出し、`.kiro/specs/**/tasks.md` → `specs/tasks.md` への同期を実行する)*
 
 - [ ] 2. **Implement Mode Detection Engine (v2-mode-1)**
   - **What**: Implement `src/logic/mode-engine.ts`, `src/types/mode.ts`.
