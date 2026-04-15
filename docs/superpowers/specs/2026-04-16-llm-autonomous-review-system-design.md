@@ -96,11 +96,34 @@ llm-review-system/
 | **Positive Framing** | Rules and constraints written as "Use X" instead of "Don't use Y" |
 | **Type-safe** | Python 3.11+ type hints + pydantic for runtime validation |
 
-### Core Protocol Definitions (`core/protocols.py`)
+### Core Shared Types (`core/types.py`)
 
 All shared data types (`ReviewRequest`, `ReviewResult`, `ShieldResult`, `ShieldFinding`,
 `Finding`, `SyncResult`, `SourceInfo`, `SyncReport`, etc.) are defined in `core/types.py`.
 Plugin-specific modules import from `core/types` — never define their own copies.
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass(frozen=True)
+class ShieldFinding:
+    """Details of a detected threat."""
+    category: str       # "prompt_injection" | "pii" | "malicious"
+    severity: str       # "low" | "medium" | "high" | "critical"
+    description: str
+    span_start: int | None = None
+    span_end: int | None = None
+
+@dataclass(frozen=True)
+class ShieldResult:
+    """Shield processing result."""
+    allowed: bool
+    sanitized_content: str
+    findings: list[ShieldFinding] = field(default_factory=list)
+    raw_response: SanitizeResponse | None = None
+```
+
+### Core Protocol Definitions (`core/protocols.py`)
 
 ```python
 from typing import Protocol, runtime_checkable
@@ -788,24 +811,7 @@ class ModelArmorClient:
 ### `plugins/security/middleware.py`
 
 ```python
-from dataclasses import dataclass
-
-@dataclass(frozen=True)
-class ShieldFinding:
-    """Details of a detected threat."""
-    category: str       # "prompt_injection" | "pii" | "malicious"
-    severity: str       # "low" | "medium" | "high" | "critical"
-    description: str
-    span_start: int | None = None
-    span_end: int | None = None
-
-@dataclass(frozen=True)
-class ShieldResult:
-    """Shield processing result."""
-    allowed: bool
-    sanitized_content: str
-    findings: list[ShieldFinding]
-    raw_response: SanitizeResponse
+from core.types import ShieldFinding, ShieldResult
 
 
 class ModelArmorMiddleware:
@@ -827,10 +833,12 @@ class ModelArmorMiddleware:
         1. Scan content with Model Armor API
         2. Convert findings to ShieldFinding list
         3. Determine block/allow based on severity
+        4. Return sanitized content from API response when allowed
         """
         response = await self.client.sanitize_input(content)
         findings = self._extract_findings(response)
         blocked = self._should_block(findings)
+        sanitized = self._extract_sanitized_content(response, content)
 
         if self.log_findings and findings:
             logger.warning(
@@ -840,7 +848,7 @@ class ModelArmorMiddleware:
 
         return ShieldResult(
             allowed=not blocked,
-            sanitized_content=content if not blocked else "",
+            sanitized_content=sanitized if not blocked else "",
             findings=findings,
             raw_response=response,
         )
@@ -850,10 +858,11 @@ class ModelArmorMiddleware:
         response = await self.client.sanitize_output(content)
         findings = self._extract_findings(response)
         blocked = self._should_block(findings)
+        sanitized = self._extract_sanitized_content(response, content)
 
         return ShieldResult(
             allowed=not blocked,
-            sanitized_content=content if not blocked else "[REDACTED]",
+            sanitized_content=sanitized if not blocked else "[REDACTED]",
             findings=findings,
             raw_response=response,
         )
@@ -866,16 +875,36 @@ class ModelArmorMiddleware:
     def _extract_findings(self, response: SanitizeResponse) -> list[ShieldFinding]:
         """Convert API response to ShieldFinding list."""
         ...
+
+    def _extract_sanitized_content(self, response: SanitizeResponse, original: str) -> str:
+        """Extract sanitized text from Model Armor response, falling back to original."""
+        sanitized = getattr(response, "sanitized_text", None)
+        return sanitized if sanitized is not None else original
 ```
 
 ### Pipeline Integration Pattern
 
 ```python
+import asyncio
+from asyncio import Semaphore
+
 class Orchestrator:
+    _io_semaphore = Semaphore(10)  # Limit concurrent file reads
+
+    async def _read_file(self, file: Path) -> tuple[Path, str]:
+        """Read a file asynchronously without blocking the event loop."""
+        async with self._io_semaphore:
+            content = await asyncio.to_thread(file.read_text)
+        return file, content
+
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
-        # 1. Input shield
-        for file in request.target_files:
-            content = file.read_text()
+        # 1. Read files concurrently (async)
+        file_contents = await asyncio.gather(
+            *(self._read_file(f) for f in request.target_files)
+        )
+
+        # 2. Input shield
+        for file, content in file_contents:
             result = await self.shield.shield_input(content)
             if not result.allowed:
                 raise SecurityBlockedError(
@@ -883,10 +912,10 @@ class Orchestrator:
                     f"{[f.category for f in result.findings]}"
                 )
 
-        # 2. Execute review (sub-agents)
+        # 3. Execute review (sub-agents)
         review_output = await self._execute_review(request)
 
-        # 3. Output shield
+        # 4. Output shield
         output_result = await self.shield.shield_output(review_output.summary)
         if not output_result.allowed:
             review_output = review_output.with_redacted_summary()
@@ -904,7 +933,7 @@ class SecurityConfig(BaseSettings):
     model_armor_location: str = "us-central1"
     model_armor_template_id: str = "default-shield"
     block_on_high_severity: bool = True
-    log_all_findings: bool = True
+    log_findings: bool = True
 ```
 
 ### Design Decisions
