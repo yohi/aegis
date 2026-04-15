@@ -1,0 +1,20 @@
+---
+description: "Security guardrails for all code modifications"
+globs: ["**/*.js", "**/*.ts", "**/*.py", "**/*.tsx", "**/*.jsx"]
+alwaysApply: false
+---
+
+## Input Validation
+- Validate all external inputs using explicit allow-lists.
+- Use parameterized queries for all database operations.
+- Sanitize user-provided strings before rendering in templates.
+
+## Secret Management
+- Store secrets exclusively in environment variables or secret managers.
+- Use `os.environ.get()` or `pydantic SecretStr` for secret access.
+- Log only redacted values (mask with `***`).
+
+## Dependency Safety
+- Import only explicitly declared dependencies from pyproject.toml.
+- Declare minimum compatible versions (`>=`) and lock exact versions in CI.
+- Use `safety check` in CI for known vulnerability scanning.
