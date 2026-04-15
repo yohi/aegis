@@ -1,0 +1,15 @@
+---
+description: "Audit trail and compliance tracking rules"
+globs: ["**/*.py", "**/*.ts"]
+alwaysApply: false
+---
+
+## Audit Trail
+- Log all state transitions with timestamp and actor.
+- Include previous and next state in audit events.
+- Retain audit logs for minimum 90 days.
+
+## Compliance
+- All review actions require explicit authorization.
+- Failed access attempts must be logged.
+- Export audit logs in JSON format.

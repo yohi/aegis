@@ -1,0 +1,19 @@
+---
+description: "Architecture and performance patterns for UI components"
+globs: ["src/components/**/*.tsx", "src/components/**/*.ts"]
+alwaysApply: false
+---
+
+## Rendering
+- Use `React.memo()` for components receiving stable props.
+- Extract expensive computations into `useMemo()` with explicit deps.
+- Prefer `useCallback()` for event handlers passed to child components.
+
+## Data Fetching
+- Implement stale-while-revalidate pattern for API responses.
+- Set explicit cache TTLs for each endpoint category.
+- Use streaming responses for payloads exceeding 100KB.
+
+## Bundle Size
+- Use dynamic `import()` for routes and heavy components.
+- Audit bundle impact before adding new dependencies.

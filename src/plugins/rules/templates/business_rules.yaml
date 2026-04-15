@@ -1,0 +1,21 @@
+name: "210-business-rules"
+description: "Domain-specific logic constraints"
+globs:
+  - "src/domain/**/*.ts"
+  - "src/domain/**/*.py"
+priority: 210
+sections:
+  - title: "Review Workflow"
+    rules:
+      - "A review transitions through states: PENDING → IN_PROGRESS → COMPLETED | FAILED."
+      - "State transitions use explicit guard conditions validated before mutation."
+      - "Every state change emits an audit event with timestamp and actor."
+  - title: "Data Integrity"
+    rules:
+      - "Review results are append-only. Completed reviews are immutable."
+      - "Use optimistic locking (version field) for concurrent review updates."
+      - "Retain raw LLM output alongside processed/summarized results."
+  - title: "Multi-Repository"
+    rules:
+      - "Each repository maintains an independent review context."
+      - "Cross-repository findings link via shared issue taxonomy."
