@@ -660,6 +660,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'core'`
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -769,13 +770,7 @@ class ReviewResult:
 
     def with_redacted_summary(self) -> ReviewResult:
         """Return a copy with redacted summary."""
-        return ReviewResult(
-            request_id=self.request_id,
-            status=self.status,
-            findings=self.findings,
-            summary="[REDACTED]",
-            error_details=self.error_details,
-        )
+        return dataclasses.replace(self, summary="[REDACTED]")
 ```
 
 - [ ] **Step 5: テストが通ることを確認**
@@ -1584,12 +1579,13 @@ from __future__ import annotations
 
 import fnmatch
 from pathlib import Path
-from typing import Any
 
 import structlog
 
 from core.config import SyncConfig
+from core.protocols import SecurityShield
 from core.types import SyncError, SyncReport
+from plugins.sync.drive_client import DriveClient
 
 logger = structlog.get_logger()
 
@@ -1599,8 +1595,8 @@ class NotebookSyncer:
 
     def __init__(
         self,
-        drive_client: Any,  # DriveClient Protocol
-        security_shield: Any,  # SecurityShield Protocol
+        drive_client: DriveClient,
+        security_shield: SecurityShield,
         config: SyncConfig,
     ) -> None:
         self.drive_client = drive_client
@@ -2984,10 +2980,10 @@ from __future__ import annotations
 import asyncio
 from asyncio import Semaphore
 from pathlib import Path
-from typing import Any
 
 import structlog
 
+from .protocols import SecurityShield
 from .types import (
     ReviewRequest,
     ReviewResult,
@@ -3003,14 +2999,14 @@ class Orchestrator:
 
     _io_semaphore = Semaphore(10)
 
-    def __init__(self, shield: Any) -> None:
+    def __init__(self, shield: SecurityShield) -> None:
         self.shield = shield
 
     async def _read_file(self, file: Path) -> tuple[Path, str]:
         """Read a file asynchronously without blocking the event loop."""
         async with self._io_semaphore:
             try:
-                content = await asyncio.to_thread(file.read_text)
+                content = await asyncio.to_thread(file.read_text, encoding="utf-8")
             except UnicodeDecodeError as exc:
                 raise SyncError(
                     f"Cannot read {file}: binary or non-UTF-8 encoding detected"
