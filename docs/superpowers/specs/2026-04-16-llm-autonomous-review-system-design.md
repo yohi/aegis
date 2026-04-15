@@ -673,6 +673,9 @@ watcher use the **Write-then-Rename** pattern to guarantee atomicity:
   On startup, stale `.tmp` files are detected and cleaned up.
 - **Sequence ID uniqueness**: `_next_sequence_id()` reads existing filenames (excluding `.tmp`)
   and increments. Combined with the single-writer-per-role constraint, this prevents ID collisions.
+- **Single-writer-per-role enforcement**: Orchestrator がロールごとに最大1つの
+  Dispatcher インスタンスのみを生成・管理することで保証する。複数インスタンスの
+  同時起動は Orchestrator のライフサイクル管理により構造的に防止される。
 
 ```python
 import os
