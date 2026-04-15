@@ -519,7 +519,7 @@ alwaysApply: false
 ## Debugging Rules
 
 ### Diagnostics
-- Use `structlog.get_logger()` for all diagnostic output. Avoid `print()` statements.
+- Send all diagnostic output through `structlog.get_logger()` rather than `print()`.
 - Include `task_id` and `agent_role` in all debug log entries for correlation.
 
 ### Isolation
@@ -877,7 +877,7 @@ class ModelArmorMiddleware:
         1. Scan content with Model Armor API
         2. Convert findings to ShieldFinding list
         3. Determine block/allow based on severity
-        4. Return sanitized content from API response when allowed
+        4. Pass through original content when allowed (Model Armor is filter-only)
         """
         response = await self.client.sanitize_input(content)
         findings = self._extract_findings(response)
@@ -921,9 +921,15 @@ class ModelArmorMiddleware:
         ...
 
     def _extract_sanitized_content(self, response: SanitizeResponse, original: str) -> str:
-        """Extract sanitized text from Model Armor response, falling back to original."""
-        sanitized = getattr(response, "sanitized_text", None)
-        return sanitized if sanitized is not None else original
+        """Return original content when Model Armor allows it.
+
+        Note: Model Armor's SanitizeResponse does not return sanitized text.
+        The API provides filter match state via response.sanitization_result
+        (fields: filter_match_state, filter_results, invocation_result,
+        sanitization_metadata). Blocking decisions are based on findings;
+        when content is allowed, the original text is passed through unchanged.
+        """
+        return original
 ```
 
 ### Pipeline Integration Pattern
@@ -1138,7 +1144,7 @@ class RetryConfig(BaseSettings):
 | File exceeds `max_file_size_kb` | 501KB file (default limit=500) | File skipped; `SyncReport` includes skip reason | Boundary |
 | File exactly at limit | 500KB file | File processed normally | Boundary |
 | Zero matching files | Glob patterns matching no files | `SyncReport(synced_count=0, errors=[])` — no error | Boundary |
-| Binary file in glob results | `.pyc` file matching `**/*.py` pattern | File skipped or `SyncError` with descriptive message | Invalid Input |
+| Binary file in glob results | Binary content in a file with `.py` extension | File skipped or `SyncError` with descriptive message | Invalid Input |
 | Drive API quota exhausted | `ResourceExhausted` during `upload_source` | `SyncError`; retried at Orchestrator level | API Limit |
 | NotebookLM source limit | Exceeding max sources per notebook | `SyncError` with clear limit message | API Limit |
 | Invalid `notebook_id` | Non-existent notebook ID | `SyncError` wrapping `NotFound` | Invalid Input |
@@ -1150,7 +1156,7 @@ class RetryConfig(BaseSettings):
 | Timeout waiting for agent | `timeout=0.1` with no completion file | `AgentTimeoutError` raised | Boundary |
 | Circular dependency | Task A depends on B, B depends on A | `TaskDeadlockError` raised by Verifier | Invalid Input |
 | Corrupted task file | Malformed YAML frontmatter | `ReviewSystemError` with parse error details | Invalid Input |
-| Concurrent dispatch race | Two dispatchers writing same sequence ID | No data loss — atomic write ensures consistency (see §5) | Concurrency |
+| Concurrent dispatch race | Two dispatchers for different roles writing simultaneously | No data loss — single-writer-per-role constraint prevents ID collision; atomic write ensures reader consistency (see §5) | Concurrency |
 | All agents fail | Every sub-agent returns `status: failed` | `ReviewResult(status=FAILED)` with aggregated error details | Error Aggregation |
 
 ### Design Decisions
