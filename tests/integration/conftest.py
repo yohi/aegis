@@ -11,6 +11,6 @@ import os
 import pytest
 
 requires_gcp = pytest.mark.skipif(
-    not os.environ.get("LLM_REVIEW_SECURITY_GCP_PROJECT_ID", "").strip(),
-    reason="GCP credentials not configured (set LLM_REVIEW_SECURITY_GCP_PROJECT_ID)",
+    not os.environ.get("LLM_SECURITY_GCP_PROJECT_ID", "").strip(),
+    reason="GCP credentials not configured (set LLM_SECURITY_GCP_PROJECT_ID)",
 )
