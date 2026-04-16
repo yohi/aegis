@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from core.types import ShieldResult, SyncResult
+from core.config import SyncConfig
+from core.types import ShieldFinding, ShieldResult, SyncResult
+from plugins.sync.notebook_sync import NotebookSyncer
 
 
 class TestNotebookSyncer:
@@ -32,9 +34,6 @@ class TestNotebookSyncer:
     async def test_sync_single_file(
         self, fake_drive: AsyncMock, fake_shield: AsyncMock, tmp_path: Path
     ) -> None:
-        from plugins.sync.notebook_sync import NotebookSyncer
-        from core.config import SyncConfig
-
         # Create a test file
         test_file = tmp_path / "test.py"
         test_file.write_text("print('hello')")
@@ -50,16 +49,15 @@ class TestNotebookSyncer:
             config=config,
         )
         report = await syncer.sync_repository(tmp_path)
-        assert report.synced_count >= 1
-        assert report.errors == ()
+        assert report.synced_count == 1
+        assert not report.errors
+        fake_drive.upload_source.assert_awaited_once()
+        fake_drive.sync_to_notebook.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_skip_oversized_file(
         self, fake_drive: AsyncMock, fake_shield: AsyncMock, tmp_path: Path
     ) -> None:
-        from plugins.sync.notebook_sync import NotebookSyncer
-        from core.config import SyncConfig
-
         big_file = tmp_path / "big.py"
         big_file.write_text("x" * (501 * 1024))  # 501KB > default 500KB limit
 
@@ -76,14 +74,14 @@ class TestNotebookSyncer:
         )
         report = await syncer.sync_repository(tmp_path)
         assert report.skipped_count == 1
+        assert not report.errors
+        fake_drive.upload_source.assert_not_awaited()
+        fake_drive.sync_to_notebook.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_zero_matching_files(
         self, fake_drive: AsyncMock, fake_shield: AsyncMock, tmp_path: Path
     ) -> None:
-        from plugins.sync.notebook_sync import NotebookSyncer
-        from core.config import SyncConfig
-
         config = SyncConfig(
             notebook_id="test-notebook",
             drive_folder_id="test-folder",
@@ -96,16 +94,14 @@ class TestNotebookSyncer:
         )
         report = await syncer.sync_repository(tmp_path)
         assert report.synced_count == 0
-        assert report.errors == ()
+        assert not report.errors
+        fake_drive.upload_source.assert_not_awaited()
+        fake_drive.sync_to_notebook.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_shield_blocks_input(
         self, fake_drive: AsyncMock, tmp_path: Path
     ) -> None:
-        from plugins.sync.notebook_sync import NotebookSyncer
-        from core.config import SyncConfig
-        from core.types import ShieldFinding
-
         blocking_shield = AsyncMock()
         blocking_shield.shield_input.return_value = ShieldResult(
             allowed=False,
@@ -134,4 +130,6 @@ class TestNotebookSyncer:
         )
         report = await syncer.sync_repository(tmp_path)
         assert report.skipped_count == 1
-        assert report.errors == ()
+        assert not report.errors
+        fake_drive.upload_source.assert_not_awaited()
+        fake_drive.sync_to_notebook.assert_not_awaited()

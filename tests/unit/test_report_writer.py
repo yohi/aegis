@@ -27,5 +27,6 @@ class TestReportWriter:
         )
         report = writer._format_report(result)
         assert "req-001" in report
+        assert "Status: completed" in report
         assert "Test summary" in report
         assert "Findings: 0" in report
