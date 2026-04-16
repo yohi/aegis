@@ -5,14 +5,14 @@ from __future__ import annotations
 import pytest
 
 from core.types import (
+    AgentTimeoutError,
     ReviewSystemError,
     SecurityBlockedError,
     ShieldFinding,
     ShieldResult,
     SyncError,
-    SyncResult,
     SyncReport,
-    AgentTimeoutError,
+    SyncResult,
     TaskDeadlockError,
 )
 
@@ -59,7 +59,7 @@ class TestShieldFinding:
     def test_shield_finding_is_immutable(self) -> None:
         finding = ShieldFinding(category="pii", severity="medium", description="PII detected")
         with pytest.raises(AttributeError):
-            finding.category = "malicious"
+            finding.category = "malicious"  # type: ignore[misc]
 
 
 class TestShieldResult:

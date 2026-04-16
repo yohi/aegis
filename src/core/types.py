@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence, Literal
-
+from typing import Any, Literal
 
 # --- Types ---
 
@@ -58,7 +58,8 @@ class ShieldFinding:
                 raise ValueError("Span indices must be non-negative")
             if self.span_start > self.span_end:
                 raise ValueError(
-                    f"span_start ({self.span_start}) cannot be greater than span_end ({self.span_end})"
+                    f"span_start ({self.span_start}) "
+                    f"cannot be greater than span_end ({self.span_end})"
                 )
 
 

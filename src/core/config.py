@@ -14,7 +14,9 @@ class SyncConfig(BaseSettings):
     notebook_id: str = ""
     drive_folder_id: str = ""
     file_patterns: list[str] = Field(default_factory=lambda: ["**/*.py", "**/*.ts", "**/*.tsx"])
-    exclude_patterns: list[str] = Field(default_factory=lambda: ["**/node_modules/**", "**/.venv/**"])
+    exclude_patterns: list[str] = Field(
+        default_factory=lambda: ["**/node_modules/**", "**/.venv/**"]
+    )
     max_file_size_kb: int = 500
 
 
