@@ -4,19 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
+from typing import Any
 
-import structlog
+from src.core.types import ReviewResult
 
-from core.types import ReviewResult
-
-logger = structlog.get_logger()
+logger = logging.getLogger(__name__)
 
 
 class ReportWriter:
     """Write review results to Google Workspace via gwscli."""
 
+    def _validate_arg(self, arg: str) -> str:
+        """Validate argument to prevent flag injection."""
+        if arg.startswith("-"):
+            raise ValueError(f"Invalid argument (potential flag injection): {arg}")
+        return arg
+
     async def write_docs_report(self, result: ReviewResult, template_id: str) -> str:
         """Output review report to Google Docs. Return doc_id."""
+        self._validate_arg(result.request_id)
+        self._validate_arg(template_id)
+
         report_content = self._format_report(result)
         stdout = await self._run_gwscli(
             "docs",
@@ -32,6 +42,7 @@ class ReportWriter:
 
     async def append_metrics_sheet(self, result: ReviewResult, sheet_id: str) -> None:
         """Append metrics row to Google Sheets."""
+        self._validate_arg(sheet_id)
         row_data = json.dumps(
             {
                 "request_id": result.request_id,
@@ -69,6 +80,7 @@ class ReportWriter:
 
     async def _run_gwscli(self, *args: str) -> str:
         """Run gwscli command asynchronously."""
+        # Note: Static analysis requires literal string here for security (Bandit B603)
         proc = await asyncio.create_subprocess_exec(
             "gwscli",
             *args,
