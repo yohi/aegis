@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🛡️ Aegis 
 **Autonomous Multi-Agent LLM Review Architecture**
 
@@ -22,10 +21,6 @@
 - ⚙️ **Isolated Execution**: Devcontainerによる、完全に隔離された安全なテスト・静的解析環境の強制。
 
 **Architecture Pattern**: プラグインベース・マイクロカーネルアーキテクチャ（Protocol-first design）
-=======
-# LLM Review System
-
-Autonomous, multi-agent LLM code review system powered by NotebookLM Enterprise and Google Cloud Model Armor.
 
 ## Architecture
 
@@ -54,4 +49,3 @@ mypy src/
 ## License
 
 See [LICENSE](LICENSE).
->>>>>>> feat/01-project-foundation
