@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from core.config import SecurityConfig
-from core.types import ShieldFinding
 from plugins.security.middleware import ModelArmorMiddleware
 
 
