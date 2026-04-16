@@ -389,7 +389,8 @@ alwaysApply: false
 
 ### Dependency Safety
 - Import only explicitly declared dependencies from pyproject.toml.
-- Pin all dependency versions using exact specifiers.
+- Declare minimum compatible versions (`>=`) and lock exact versions in CI
+  using `pip-compile` or an equivalent lockfile tool.
 - Use `safety check` in CI for known vulnerability scanning.
 ```
 
@@ -673,9 +674,9 @@ watcher use the **Write-then-Rename** pattern to guarantee atomicity:
   On startup, stale `.tmp` files are detected and cleaned up.
 - **Sequence ID uniqueness**: `_next_sequence_id()` reads existing filenames (excluding `.tmp`)
   and increments. Combined with the single-writer-per-role constraint, this prevents ID collisions.
-- **Single-writer-per-role enforcement**: Orchestrator がロールごとに最大1つの
-  Dispatcher インスタンスのみを生成・管理することで保証する。複数インスタンスの
-  同時起動は Orchestrator のライフサイクル管理により構造的に防止される。
+- **Single-writer-per-role enforcement**: The Orchestrator spawns and manages
+  at most one Dispatcher instance per role. Concurrent instances are
+  structurally prevented through the Orchestrator's lifecycle management.
 
 ```python
 import os
@@ -947,7 +948,12 @@ class Orchestrator:
     async def _read_file(self, file: Path) -> tuple[Path, str]:
         """Read a file asynchronously without blocking the event loop."""
         async with self._io_semaphore:
-            content = await asyncio.to_thread(file.read_text)
+            try:
+                content = await asyncio.to_thread(file.read_text)
+            except UnicodeDecodeError as exc:
+                raise SyncError(
+                    f"Cannot read {file}: binary or non-UTF-8 encoding detected"
+                ) from exc
         return file, content
 
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
