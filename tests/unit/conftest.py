@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from core.types import (
-    AppConfig,
-    ReviewRequest,
-    ReviewResult,
     ShieldResult,
     SyncResult,
 )
@@ -18,7 +16,7 @@ class FakeDriveClient:
 
     def __init__(self) -> None:
         self.uploaded_files: list[tuple[Path, str]] = []
-        self.synced_notebooks: list[tuple[str, list[str]] = []
+        self.synced_notebooks: list[tuple[str, list[str]]] = []
 
     async def upload_source(self, file_path: Path, folder_id: str) -> str:
         self.uploaded_files.append((file_path, folder_id))
@@ -30,7 +28,7 @@ class FakeDriveClient:
         self.synced_notebooks.append((notebook_id, drive_file_ids))
         return SyncResult(synced_count=len(drive_file_ids), errors=[])
 
-    async def list_sources(self, notebook_id: str) -> list:
+    async def list_sources(self, notebook_id: str) -> list[Any]:
         return []
 
 

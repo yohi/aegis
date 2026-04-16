@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
-from core.types import ShieldFinding, ShieldResult
 from core.protocols import SecurityShield
 
 
@@ -71,7 +69,7 @@ class TestModelArmorMiddleware:
         result = await middleware.shield_input("safe content")
         assert result.allowed is True
         assert result.sanitized_content == "safe content"
-        assert result.findings == []
+        assert not result.findings
 
     @pytest.mark.asyncio
     async def test_shield_input_blocks_high_severity(
