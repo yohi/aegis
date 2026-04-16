@@ -13,6 +13,7 @@ from .protocols import SecurityShield
 from .types import (
     ReviewRequest,
     ReviewResult,
+    ReviewSystemError,
     SecurityBlockedError,
     SyncError,
 )
