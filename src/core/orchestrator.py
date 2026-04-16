@@ -42,13 +42,13 @@ class Orchestrator:
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
         """Execute the full review pipeline."""
         sanitized_files = []
-        repo_root = self.repo_path.resolve()
+        repo_root = request.repo_path.resolve()
         for f in request.target_files:
-            # Resolve path against repo_path and verify it's a descendant
-            resolved_path = (self.repo_path / f).resolve()
+            # Resolve path against request.repo_path and verify it's a descendant
+            resolved_path = (repo_root / f).resolve()
             if repo_root not in resolved_path.parents and resolved_path != repo_root:
-                logger.warning("security_path_traversal_blocked", path=str(f))
-                continue
+                logger.error("security_path_traversal_attempt_detected", path=str(f))
+                raise SecurityBlockedError(f"Path traversal attempt detected: {f}")
             sanitized_files.append(resolved_path)
 
         file_contents = await asyncio.gather(*(self._read_file(f) for f in sanitized_files))
