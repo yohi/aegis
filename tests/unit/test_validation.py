@@ -26,31 +26,31 @@ def test_app_config_env_prefix_change() -> None:
 
 class FakeResponse:
     """Generic fake for API response."""
-    def __init__(self, **kwargs):
+
+    def __init__(self, **kwargs: object) -> None:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
 
 class FakeFilterResult:
     """Fake for filter_results entry."""
-    def __init__(self, match_state: str):
+
+    def __init__(self, match_state: str) -> None:
         self.match_state = match_state
 
 
 def test_extract_findings_fallback_to_sanitization_result() -> None:
     """_extract_findings should check sanitization_result if findings is empty."""
     middleware = ModelArmorMiddleware(client=None)  # type: ignore
-    
+
     # Case: findings is empty, but sanitization_result has matches
     response = FakeResponse(
         findings=[],
         sanitization_result=FakeResponse(
-            filter_results={
-                "pii_filter": FakeFilterResult("MATCH")
-            }
-        )
+            filter_results={"pii_filter": FakeFilterResult("MATCH")}
+        ),
     )
-    
+
     findings = middleware._extract_findings(response)
     assert len(findings) == 1
     assert findings[0].category == "pii_filter"
@@ -60,16 +60,12 @@ def test_extract_findings_fallback_to_sanitization_result() -> None:
 def test_extract_findings_prioritizes_findings_list() -> None:
     """_extract_findings should return findings list if it's not empty."""
     middleware = ModelArmorMiddleware(client=None)  # type: ignore
-    
+
     response = FakeResponse(
         findings=[{"category": "test", "severity": "medium", "description": "desc"}],
-        sanitization_result=FakeResponse(
-            filter_results={
-                "other": FakeFilterResult("MATCH")
-            }
-        )
+        sanitization_result=FakeResponse(filter_results={"other": FakeFilterResult("MATCH")}),
     )
-    
+
     findings = middleware._extract_findings(response)
     assert len(findings) == 1
     assert findings[0].category == "test"
