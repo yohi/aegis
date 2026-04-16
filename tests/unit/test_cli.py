@@ -22,12 +22,13 @@ class TestCLIReview:
         assert result.exit_code == 0
         assert "Run a review on the specified repository" in result.stdout
 
-    def test_review_repo_not_found(self, runner: CliRunner) -> None:
+    def test_review_repo_not_found(self, runner: CliRunner, tmp_path: Path) -> None:
+        non_existent = tmp_path / "nonexistent" / "repo"
         result = runner.invoke(
             app,
             [
                 "review",
-                "/nonexistent/path",
+                str(non_existent),
                 "--notebook-id",
                 "test-id",
                 "--project-id",
@@ -79,6 +80,9 @@ class TestCLIReview:
             assert "Findings: 0" in result.stdout
             assert "Summary: Clean review" in result.stdout
 
+            # Verify cleanup
+            mock_armor.close.assert_awaited_once()
+
             mock_armor_cls.assert_called_once_with(project_id="test-project")
             mock_orch_cls.assert_called_once()
             mock_orch.run_review.assert_called_once()
@@ -128,6 +132,9 @@ class TestCLIReview:
 
             assert result.exit_code == 0
             
+            # Verify cleanup
+            mock_armor.close.assert_awaited_once()
+
             # Verify warning was logged
             mock_logger.warning.assert_called_once()
             args, kwargs = mock_logger.warning.call_args
