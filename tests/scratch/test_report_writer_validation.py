@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from src.plugins.sync.report_writer import ReportWriter
 
 def test_validate_arg():
