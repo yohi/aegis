@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 from pathlib import Path
 

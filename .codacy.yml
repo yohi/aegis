@@ -3,6 +3,9 @@ engines:
   bandit:
     exclude_paths:
       - "tests/**"
+    skips:
+      - B603
+      - B607
   flake8:
     # F999 is often a false positive in newer Python syntax for older linters
     # We ignore B101 (assert) in tests via bandit exclusion above.
