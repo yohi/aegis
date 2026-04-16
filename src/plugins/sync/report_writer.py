@@ -79,12 +79,9 @@ class ReportWriter:
     async def _run_gwscli(self, *args: str) -> str:
         """Run gwscli command asynchronously."""
         # Note: Static analysis requires literal string here for security (Bandit B603)
-        proc = await asyncio.create_subprocess_exec(  # nosec
-            "gwscli",
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        proc = await asyncio.create_subprocess_exec(
+            "gwscli", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )  # nosec B603
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
             raise RuntimeError(f"gwscli failed (exit {proc.returncode}): {stderr.decode()}")
