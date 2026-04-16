@@ -39,6 +39,14 @@ class Orchestrator:
                 ) from exc
         return file, content
 
+    async def _shield_file(self, file: Path, content: str) -> None:
+        """Shield a single file input and raise error if blocked."""
+        result = await self.shield.shield_input(content)
+        if not result.allowed:
+            raise SecurityBlockedError(
+                f"Input blocked for {file.name}: {[f.category for f in result.findings]}"
+            )
+
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
         """Execute the full review pipeline."""
         sanitized_files = []
@@ -53,12 +61,8 @@ class Orchestrator:
 
         file_contents = await asyncio.gather(*(self._read_file(f) for f in sanitized_files))
 
-        for file, content in file_contents:
-            result = await self.shield.shield_input(content)
-            if not result.allowed:
-                raise SecurityBlockedError(
-                    f"Input blocked for {file.name}: {[f.category for f in result.findings]}"
-                )
+        # Parallelize security shielding for all files
+        await asyncio.gather(*(self._shield_file(f, c) for f, c in file_contents))
 
         review_output = ReviewResult(
             request_id=request.request_id,
