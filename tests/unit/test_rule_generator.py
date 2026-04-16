@@ -70,3 +70,16 @@ class TestRuleGenerator:
         assert len(generated) == 1
         content = generated[0].read_text(encoding="utf-8")
         assert "globs:\n- src/*.py" in content
+
+    def test_generate_with_invalid_overrides(
+        self, template_dir: Path, tmp_path: Path
+    ) -> None:
+        target_dir = tmp_path / "output_invalid"
+        gen = RuleGenerator(template_dir)
+        
+        # This should not raise AttributeError even if 'security' override is not a dict
+        overrides = {"security": "invalid_type_not_a_dict"}
+        generated = gen.generate(target_dir, overrides=overrides)
+        
+        assert len(generated) == 1
+        assert generated[0].name == "security.mdc"
