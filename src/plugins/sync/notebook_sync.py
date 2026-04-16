@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import fnmatch
 from pathlib import Path
 
 import structlog
@@ -45,7 +44,8 @@ class NotebookSyncer:
                     synced_count += 1
                 else:
                     skipped_count += 1
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.error("Processing failed", file=str(file_path), error=str(exc))
                 errors.append(f"Processing failed for {file_path}: {exc}")
                 skipped_count += 1
 
@@ -104,9 +104,11 @@ class NotebookSyncer:
             for file_path in repo_path.glob(pattern):
                 if not file_path.is_file():
                     continue
-                relative = str(file_path.relative_to(repo_path))
+                
+                # Use Path.match on the relative path for robust exclusion (supports **)
+                relative_path = file_path.relative_to(repo_path)
                 excluded = any(
-                    fnmatch.fnmatch(relative, exc) for exc in self.config.exclude_patterns
+                    relative_path.match(exc) for exc in self.config.exclude_patterns
                 )
                 if not excluded:
                     matched.append(file_path)
