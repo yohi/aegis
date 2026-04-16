@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from core.types import (
     ShieldResult,
@@ -27,7 +28,7 @@ class FakeDriveClient:
         self.synced_notebooks.append((notebook_id, drive_file_ids))
         return SyncResult(synced_count=len(drive_file_ids), errors=[])
 
-    async def list_sources(self, notebook_id: str) -> list:
+    async def list_sources(self, notebook_id: str) -> list[Any]:
         return []
 
 
