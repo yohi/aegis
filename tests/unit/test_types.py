@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from core.types import (
-    Finding,
     ReviewRequest,
     ReviewResult,
     ReviewSystemError,
