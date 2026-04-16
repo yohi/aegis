@@ -134,6 +134,7 @@ class ReviewRequest:
     request_id: str
     repo_path: Path
     target_files: Sequence[Path] = field(default_factory=tuple)
+    notebook_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "target_files", tuple(self.target_files))
