@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
+import os
 import pytest
 from pydantic import ValidationError
 
-from core.config import SecurityConfig
+from core.config import SecurityConfig, AppConfig
 from plugins.security.middleware import ModelArmorMiddleware
 
 
-def test_security_config_requires_project_id() -> None:
-    """SecurityConfig should fail if gcp_project_id is empty or missing."""
-    with pytest.raises(ValidationError):
-        SecurityConfig(gcp_project_id="")
+def test_security_config_allows_empty_project_id_for_initialization() -> None:
+    """SecurityConfig should allow empty gcp_project_id for flexible initialization."""
+    config = SecurityConfig(gcp_project_id="")
+    assert config.gcp_project_id == ""
+
+
+def test_app_config_env_prefix_change() -> None:
+    """AppConfig should pick up security settings with the new LLM_SECURITY_ prefix."""
+    os.environ["LLM_SECURITY_GCP_PROJECT_ID"] = "test-project-from-env"
+    try:
+        config = AppConfig()
+        assert config.security.gcp_project_id == "test-project-from-env"
+    finally:
+        del os.environ["LLM_SECURITY_GCP_PROJECT_ID"]
 
 
 class FakeResponse:

@@ -1,4 +1,4 @@
-"""Configuration classes using pydantic-settings."""
+"""Configuration management using Pydantic Settings."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SyncConfig(BaseSettings):
-    """Configuration for the sync pipeline."""
+    """Configuration for Google Drive / NotebookLM sync."""
 
     model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_SYNC_")
 
@@ -25,7 +25,9 @@ class SecurityConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_SECURITY_")
 
-    gcp_project_id: str = Field(..., min_length=1)
+    # Keep default empty to allow AppConfig() without arguments.
+    # Validation should be performed before actual API use.
+    gcp_project_id: str = ""
     location: str = "us-central1"
 
     model_armor_template_id: str = "default-shield"
@@ -34,14 +36,14 @@ class SecurityConfig(BaseSettings):
 
 
 class RetryConfig(BaseSettings):
-    """Configuration for retry behavior."""
+    """Configuration for transient error retries."""
 
     model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_RETRY_")
 
     max_attempts: int = 3
-    base_delay_seconds: float = 1.0
-    max_delay_seconds: float = 30.0
-    retryable_errors: list[str] = Field(
+    initial_backoff: float = 1.0
+    max_backoff: float = 60.0
+    retryable_exceptions: list[str] = Field(
         default_factory=lambda: [
             "google.api_core.exceptions.ServiceUnavailable",
             "google.api_core.exceptions.DeadlineExceeded",
@@ -55,5 +57,5 @@ class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_")
 
     sync: SyncConfig = Field(default_factory=SyncConfig)
-    security: SecurityConfig
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)

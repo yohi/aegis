@@ -80,21 +80,37 @@ class ModelArmorMiddleware:
     def _extract_findings(self, response: Any) -> list[ShieldFinding]:
         """Convert API response to ShieldFinding list.
 
-        Supports both real SanitizeResponse and test fakes.
+        Supports both real SanitizeResponse (Protobuf) and test fakes (dict).
         """
         findings: list[ShieldFinding] = []
 
         # 1. Process explicit 'findings' list (if populated)
-        if hasattr(response, "findings") and isinstance(response.findings, list):
+        if hasattr(response, "findings") and isinstance(response.findings, list | tuple):
             for item in response.findings:
-                if isinstance(item, dict):
-                    findings.append(
-                        ShieldFinding(
-                            category=item.get("category", "unknown"),
-                            severity=item.get("severity", "low"),
-                            description=item.get("description", ""),
-                        )
+                # Support both dict (tests/fakes) and Protobuf/Object
+                category = (
+                    item.get("category")
+                    if isinstance(item, dict)
+                    else getattr(item, "category", None)
+                ) or "unknown"
+                severity = (
+                    item.get("severity")
+                    if isinstance(item, dict)
+                    else getattr(item, "severity", None)
+                ) or "low"
+                description = (
+                    item.get("description")
+                    if isinstance(item, dict)
+                    else getattr(item, "description", None)
+                ) or ""
+
+                findings.append(
+                    ShieldFinding(
+                        category=category,
+                        severity=severity,  # type: ignore[arg-type]
+                        description=description,
                     )
+                )
             # If we found direct findings, we prioritize them
             if findings:
                 return findings
