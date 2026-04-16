@@ -1,4 +1,7 @@
 ---
+exclude_paths:
+  - "AGENTS.md"
+
 engines:
   bandit:
     exclude_paths:
