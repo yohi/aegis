@@ -5,9 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.types import (
-    AppConfig,
-    ReviewRequest,
-    ReviewResult,
     ShieldResult,
     SyncResult,
 )
