@@ -72,7 +72,7 @@ class RuleGenerator:
 
             if rule_name in overrides:
                 rule_overrides = overrides[rule_name]
-                if isinstance(rule_overrides.get("globs"), list):
+                if isinstance(rule_overrides, dict) and isinstance(rule_overrides.get("globs"), list):
                     globs = rule_overrides["globs"]
 
             mdc_content = self._render_mdc(description, globs, sections)
@@ -121,10 +121,19 @@ class RuleGenerator:
                 continue
             title = section.get("title", "")
             rules = section.get("rules", [])
+            
+            # Coerce rules to a list of strings and sanitize
+            if isinstance(rules, str):
+                rules = [rules]
+            elif not isinstance(rules, list):
+                rules = []
+
             lines.append(f"## {title}")
             lines.append("")
             for rule in rules:
-                lines.append(f"- {rule}")
+                # Basic sanitization: remove potential markdown injection/formatting in list items
+                sanitized_rule = str(rule).replace("\n", " ").strip()
+                lines.append(f"- {sanitized_rule}")
             lines.append("")
 
         return "\n".join(lines)

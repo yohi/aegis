@@ -29,6 +29,8 @@ class Orchestrator:
         repo_path: Path,
         max_concurrent_shields: int = 10,
     ) -> None:
+        if not isinstance(max_concurrent_shields, int) or max_concurrent_shields < 1:
+            raise ValueError("max_concurrent_shields must be an int >= 1")
         self._io_semaphore = Semaphore(10)
         self._shield_semaphore = Semaphore(max_concurrent_shields)
         self.shield = shield
@@ -52,7 +54,7 @@ class Orchestrator:
 
         if not result.allowed:
             categories = [f.category for f in result.findings]
-            logger.warning(
+            logger.error(
                 "security_input_blocked",
                 message=f"Input blocked for {file.name}",
                 file=file.name,
@@ -90,11 +92,18 @@ class Orchestrator:
                     raise exc
             raise  # Fallback for unexpected exceptions
 
+        logger.info(
+            "state_transition",
+            request_id=request.request_id,
+            actor="system",
+            previous_state="pending",
+            next_state="in_progress",
+        )
         review_output = ReviewResult(
             request_id=request.request_id,
             status="in_progress",
             findings=(),
-            summary="Review completed successfully.",
+            summary="Review in progress.",
         )
 
         output_result = await self.shield.shield_output(review_output.summary)
