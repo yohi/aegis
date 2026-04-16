@@ -31,8 +31,16 @@ class RuleGenerator:
             with open(yaml_file) as f:
                 template = yaml.safe_load(f)
 
-            rule_name = template["name"]
-            description = template["description"]
+            if not isinstance(template, dict):
+                logger.warning("Skipping invalid template", file=str(yaml_file))
+                continue
+
+            rule_name = template.get("name")
+            description = template.get("description", "")
+            if not rule_name:
+                logger.warning("Template missing name", file=str(yaml_file))
+                continue
+
             globs = template.get("globs", [])
             sections = template.get("sections", [])
 
@@ -43,8 +51,9 @@ class RuleGenerator:
 
             mdc_content = self._render_mdc(description, globs, sections)
 
+            target_dir.mkdir(parents=True, exist_ok=True)
             output_path = target_dir / f"{rule_name}.mdc"
-            output_path.write_text(mdc_content)
+            output_path.write_text(mdc_content, encoding="utf-8")
             generated.append(output_path)
 
             logger.info("Generated rule file", path=str(output_path))
@@ -61,7 +70,8 @@ class RuleGenerator:
         lines: list[str] = []
 
         lines.append("---")
-        lines.append(f"description: {description}")
+        # Quote description to handle special characters like '#'
+        lines.append(f'description: "{description}"')
         glob_str = ", ".join(f'"{g}"' for g in globs)
         lines.append(f"globs: [{glob_str}]")
         lines.append("alwaysApply: false")

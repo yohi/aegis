@@ -61,8 +61,18 @@ class Orchestrator:
 
         file_contents = await asyncio.gather(*(self._read_file(f) for f in sanitized_files))
 
-        # Parallelize security shielding for all files
-        await asyncio.gather(*(self._shield_file(f, c) for f, c in file_contents))
+        # Parallelize security shielding for all files using TaskGroup for robust cancellation
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for file, content in file_contents:
+                    tg.create_task(self._shield_file(file, content))
+        except ExceptionGroup as eg:
+            # Re-raise the first SecurityBlockedError or other ReviewError to maintain API consistency
+            # If multiple files are blocked, TaskGroup collects all, but we only need to report the first failure.
+            for exc in eg.exceptions:
+                if isinstance(exc, SecurityBlockedError):
+                    raise exc
+            raise  # Fallback for unexpected exceptions
 
         review_output = ReviewResult(
             request_id=request.request_id,
