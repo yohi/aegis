@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 # --- Exceptions ---
@@ -51,7 +51,7 @@ class ShieldResult:
 
     allowed: bool
     sanitized_content: str
-    findings: list[ShieldFinding] = field(default_factory=list)
+    findings: Sequence[ShieldFinding] = field(default_factory=tuple)
     raw_response: Any | None = None
 
 
@@ -69,7 +69,7 @@ class SyncResult:
     """Sync operation result."""
 
     synced_count: int
-    errors: list[str] = field(default_factory=list)
+    errors: Sequence[str] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ class SyncReport:
     total_files: int
     synced_count: int
     skipped_count: int
-    errors: list[str] = field(default_factory=list)
+    errors: Sequence[str] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ class ReviewRequest:
 
     request_id: str
     repo_path: Path
-    target_files: list[Path] = field(default_factory=list)
+    target_files: Sequence[Path] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,7 @@ class ReviewResult:
 
     request_id: str
     status: str
-    findings: list[Finding] = field(default_factory=list)
+    findings: Sequence[Finding] = field(default_factory=tuple)
     summary: str = ""
     error_details: str | None = None
 
@@ -117,8 +117,3 @@ class ReviewResult:
         return dataclasses.replace(self, summary="[REDACTED]")
 
 
-@dataclass(frozen=True)
-class AppConfig:
-    """Top-level application configuration."""
-
-    pass
