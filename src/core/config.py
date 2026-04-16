@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,8 +13,8 @@ class SyncConfig(BaseSettings):
 
     notebook_id: str = ""
     drive_folder_id: str = ""
-    file_patterns: list[str] = ["**/*.py", "**/*.ts", "**/*.tsx"]
-    exclude_patterns: list[str] = ["**/node_modules/**", "**/.venv/**"]
+    file_patterns: list[str] = Field(default_factory=lambda: ["**/*.py", "**/*.ts", "**/*.tsx"])
+    exclude_patterns: list[str] = Field(default_factory=lambda: ["**/node_modules/**", "**/.venv/**"])
     max_file_size_kb: int = 500
 
 
@@ -37,10 +38,12 @@ class RetryConfig(BaseSettings):
     max_attempts: int = 3
     base_delay_seconds: float = 1.0
     max_delay_seconds: float = 30.0
-    retryable_errors: list[str] = [
-        "google.api_core.exceptions.ServiceUnavailable",
-        "google.api_core.exceptions.DeadlineExceeded",
-    ]
+    retryable_errors: list[str] = Field(
+        default_factory=lambda: [
+            "google.api_core.exceptions.ServiceUnavailable",
+            "google.api_core.exceptions.DeadlineExceeded",
+        ]
+    )
 
 
 class AppConfig(BaseSettings):
@@ -48,6 +51,6 @@ class AppConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_")
 
-    sync: SyncConfig = SyncConfig()
-    security: SecurityConfig = SecurityConfig()
-    retry: RetryConfig = RetryConfig()
+    sync: SyncConfig = Field(default_factory=SyncConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
+    retry: RetryConfig = Field(default_factory=RetryConfig)
