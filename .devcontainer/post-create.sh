@@ -20,7 +20,7 @@ fi
 if command -v gwscli &> /dev/null; then
     echo "✅ gwscli installed"
 else
-    echo "⚠️  gwscli not found. (Package name needs verification)"
+    echo "⚠️  gwscli not found. See docs/setup-guide.md for installation instructions."
 fi
 
 echo ""

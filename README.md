@@ -31,7 +31,7 @@ All plugins implement `core/protocols.py` Protocols — no concrete class depend
 
 1. Open in DevContainer (VS Code / Cursor)
 2. Environment is auto-configured via `post-create.sh`
-3. Run: `pip install -e ".[dev]"`
+3. Run: `pip install -e ".[dev]"` — *only* if `post-create.sh` didn't run or to re-install after dependency changes.
 
 ## Development
 
