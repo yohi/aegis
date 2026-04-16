@@ -54,7 +54,9 @@ class TestRuleGenerator:
         
         content = output_file.read_text(encoding="utf-8")
         # yaml.safe_dump might use single quotes or double quotes depending on content
-        assert "description: 'Security # guardrails'" in content or 'description: "Security # guardrails"' in content
+        expected_sq = "description: 'Security # guardrails'"
+        expected_dq = 'description: "Security # guardrails"'
+        assert expected_sq in content or expected_dq in content
         # Check if directory was created
         assert target_dir.exists()
 

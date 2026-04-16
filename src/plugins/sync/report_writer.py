@@ -102,10 +102,15 @@ class ReportWriter:
 
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             stdout, stderr = await proc.communicate()
-            logger.error("gwscli timed out", timeout=timeout, stdout=stdout.decode(), stderr=stderr.decode())
+            logger.error(
+                "gwscli timed out",
+                timeout=timeout,
+                stdout=stdout.decode(),
+                stderr=stderr.decode(),
+            )
             raise TimeoutError(f"gwscli timed out after {timeout}s") from None
 
         if proc.returncode != 0:

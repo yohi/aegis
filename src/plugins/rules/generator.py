@@ -4,9 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import structlog
+import yaml
 
 logger = structlog.get_logger()
 
@@ -72,7 +71,10 @@ class RuleGenerator:
 
             if rule_name in overrides:
                 rule_overrides = overrides[rule_name]
-                if isinstance(rule_overrides, dict) and isinstance(rule_overrides.get("globs"), list):
+                if (
+                    isinstance(rule_overrides, dict)
+                    and isinstance(rule_overrides.get("globs"), list)
+                ):
                     globs = rule_overrides["globs"]
 
             mdc_content = self._render_mdc(description, globs, sections)
