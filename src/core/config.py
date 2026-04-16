@@ -23,10 +23,11 @@ class SyncConfig(BaseSettings):
 class SecurityConfig(BaseSettings):
     """Configuration for Model Armor security."""
 
-    model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_SECURITY_")
+    model_config = SettingsConfigDict(env_prefix="LLM_SECURITY_")
 
-    gcp_project_id: str = ""
-    model_armor_location: str = "us-central1"
+    gcp_project_id: str = Field(..., min_length=1)
+    location: str = "us-central1"
+
     model_armor_template_id: str = "default-shield"
     block_on_high_severity: bool = True
     log_findings: bool = True
@@ -54,5 +55,5 @@ class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_REVIEW_")
 
     sync: SyncConfig = Field(default_factory=SyncConfig)
-    security: SecurityConfig = Field(default_factory=SecurityConfig)
+    security: SecurityConfig
     retry: RetryConfig = Field(default_factory=RetryConfig)

@@ -40,8 +40,9 @@ class ModelArmorMiddleware:
 
         if self.log_findings and findings:
             logger.warning(
-                "Input shield findings",
-                extra={"finding_count": len(findings), "blocked": blocked},
+                "Input shield findings detected",
+                finding_count=len(findings),
+                blocked=blocked,
             )
 
         return ShieldResult(
@@ -56,6 +57,13 @@ class ModelArmorMiddleware:
         response = await self.client.sanitize_output(content)
         findings = self._extract_findings(response)
         blocked = self._should_block(findings)
+
+        if self.log_findings and findings:
+            logger.warning(
+                "Output shield findings detected",
+                finding_count=len(findings),
+                blocked=blocked,
+            )
 
         return ShieldResult(
             allowed=not blocked,
@@ -76,6 +84,7 @@ class ModelArmorMiddleware:
         """
         findings: list[ShieldFinding] = []
 
+        # 1. Process explicit 'findings' list (if populated)
         if hasattr(response, "findings") and isinstance(response.findings, list):
             for item in response.findings:
                 if isinstance(item, dict):
@@ -86,21 +95,23 @@ class ModelArmorMiddleware:
                             description=item.get("description", ""),
                         )
                     )
-            return findings
+            # If we found direct findings, we prioritize them
+            if findings:
+                return findings
 
+        # 2. Fallback to 'sanitization_result' (common in Protobuf responses)
         if hasattr(response, "sanitization_result"):
             result = response.sanitization_result
             if hasattr(result, "filter_results"):
-                for _filter_name, filter_result in result.filter_results.items():
-                    if (
-                        hasattr(filter_result, "match_state")
-                        and str(filter_result.match_state) != "NO_MATCH"
-                    ):
+                for filter_name, filter_result in result.filter_results.items():
+                    # Check match_state (expected to be an Enum or string)
+                    match_state = getattr(filter_result, "match_state", "NO_MATCH")
+                    if str(match_state) != "NO_MATCH":
                         findings.append(
                             ShieldFinding(
-                                category=_filter_name,
-                                severity="high",
-                                description=f"Filter matched: {_filter_name}",
+                                category=filter_name,
+                                severity="high",  # Fallback severity
+                                description=f"Filter matched: {filter_name} ({match_state})",
                             )
                         )
 
