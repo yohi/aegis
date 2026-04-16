@@ -5,7 +5,13 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, Literal
+
+
+# --- Types ---
+
+Severity = Literal["info", "low", "medium", "high", "critical"]
+ReviewStatus = Literal["pending", "running", "completed", "failed"]
 
 
 # --- Exceptions ---
@@ -39,7 +45,7 @@ class ShieldFinding:
     """Details of a detected threat."""
 
     category: str
-    severity: str
+    severity: Severity
     description: str
     span_start: int | None = None
     span_end: int | None = None
@@ -53,6 +59,9 @@ class ShieldResult:
     sanitized_content: str
     findings: Sequence[ShieldFinding] = field(default_factory=tuple)
     raw_response: Any | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "findings", tuple(self.findings))
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,9 @@ class SyncResult:
     synced_count: int
     errors: Sequence[str] = field(default_factory=tuple)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "errors", tuple(self.errors))
+
 
 @dataclass(frozen=True)
 class SyncReport:
@@ -81,6 +93,9 @@ class SyncReport:
     skipped_count: int
     errors: Sequence[str] = field(default_factory=tuple)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "errors", tuple(self.errors))
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -88,7 +103,7 @@ class Finding:
 
     file_path: Path
     line: int
-    severity: str
+    severity: Severity
     message: str
     rule_id: str | None = None
 
@@ -101,23 +116,29 @@ class ReviewRequest:
     repo_path: Path
     target_files: Sequence[Path] = field(default_factory=tuple)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target_files", tuple(self.target_files))
+
 
 @dataclass(frozen=True)
 class ReviewResult:
     """Output from a review pipeline."""
 
     request_id: str
-    status: str
+    status: ReviewStatus
     findings: Sequence[Finding] = field(default_factory=tuple)
     summary: str = ""
     error_details: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "findings", tuple(self.findings))
 
     def with_redacted_summary(self) -> ReviewResult:
         """Return a copy with redacted summary."""
         return dataclasses.replace(self, summary="[REDACTED]")
 
     def with_summary(self, summary: str) -> ReviewResult:
-        """Return a copy with a updated summary."""
+        """Return a copy with an updated summary."""
         return dataclasses.replace(self, summary=summary)
 
 
