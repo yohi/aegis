@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 import structlog
@@ -35,23 +37,8 @@ class TaskDispatcher:
 
     def _generate_filename(self, message: TaskMessage) -> str:
         date = message.created_at.strftime("%Y%m%d")
-        seq = self._next_sequence_id()
-        return f"TASK-{date}-{seq:03d}-{message.sender}-to-{message.receiver}.md"
-
-    def _next_sequence_id(self) -> int:
-        """Determine next sequential ID from existing files."""
-        existing = [f for f in self.task_dir.glob("*.md") if not f.name.endswith(".tmp")]
-        if not existing:
-            return 1
-        max_id = 0
-        for f in existing:
-            parts = f.stem.split("-")
-            if len(parts) >= 3:
-                try:
-                    max_id = max(max_id, int(parts[2]))
-                except ValueError:
-                    continue
-        return max_id + 1
+        unique_id = uuid.uuid4().hex[:8]
+        return f"TASK-{date}-{unique_id}-{message.sender}-to-{message.receiver}.md"
 
     def _render_markdown(self, message: TaskMessage) -> str:
         """Render TaskMessage as Markdown with YAML frontmatter."""
@@ -61,18 +48,17 @@ class TaskDispatcher:
         constraints_str = "\n".join(
             f"- {c}" for c in message.constraints
         )
-        depends_str = (
-            str(message.depends_on) if message.depends_on else "[]"
-        )
+        depends_str = json.dumps(message.depends_on)
+        completed_at_str = json.dumps(message.completed_at.isoformat()) if message.completed_at else "null"
 
         return f"""---
-task_id: "{message.task_id}"
-sender: "{message.sender}"
-receiver: "{message.receiver}"
-status: "{message.status}"
-priority: "{message.priority}"
-created_at: "{message.created_at.isoformat()}"
-completed_at: null
+task_id: {json.dumps(message.task_id)}
+sender: {json.dumps(message.sender)}
+receiver: {json.dumps(message.receiver)}
+status: {json.dumps(message.status)}
+priority: {json.dumps(message.priority)}
+created_at: {json.dumps(message.created_at.isoformat())}
+completed_at: {completed_at_str}
 depends_on: {depends_str}
 ---
 
@@ -95,17 +81,20 @@ Return findings as structured YAML in the response section below.
 
     async def _atomic_write(self, target: Path, content: str) -> None:
         """Write content atomically using write-then-rename."""
+        import asyncio
+        await asyncio.to_thread(self._sync_atomic_write, target, content)
+
+    def _sync_atomic_write(self, target: Path, content: str) -> None:
         dir_path = target.parent
         fd, tmp_path = tempfile.mkstemp(
             suffix=".tmp", prefix=target.stem, dir=dir_path
         )
         try:
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(content)
                 f.flush()
                 os.fsync(f.fileno())
             os.rename(tmp_path, target)
-        except BaseException:
+        finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
-            raise

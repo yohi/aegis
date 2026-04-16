@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -27,8 +29,8 @@ class TaskWatcher:
         timeout: float = 300.0,
     ) -> list[TaskMessage]:
         """Poll until all specified tasks reach completed/failed status."""
-        elapsed = 0.0
-        while elapsed < timeout:
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < timeout:
             results = await self.collect_results(task_ids)
             all_done = all(
                 results.get(tid) is not None
@@ -38,7 +40,6 @@ class TaskWatcher:
             if all_done:
                 return [results[tid] for tid in task_ids]
             await asyncio.sleep(self.poll_interval)
-            elapsed += self.poll_interval
 
         raise AgentTimeoutError(
             f"Tasks {task_ids} did not complete within {timeout}s"
@@ -77,13 +78,37 @@ class TaskWatcher:
             if response_section and not response_section.startswith("<!--"):
                 response = response_section
 
-        from datetime import datetime
+        # Extract Objective
+        objective = ""
+        if "## Objective" in body:
+            section = body.split("## Objective", 1)[1]
+            objective = section.split("##", 1)[0].strip()
+
+        # Extract Target Files
+        target_files = []
+        if "## Target Files" in body:
+            section = body.split("## Target Files", 1)[1]
+            section = section.split("##", 1)[0].strip()
+            for line in section.splitlines():
+                stripped = line.strip().lstrip("- ").strip("`")
+                if stripped and stripped != "(none)":
+                    target_files.append(Path(stripped))
+
+        # Extract Constraints
+        constraints = []
+        if "## Constraints" in body:
+            section = body.split("## Constraints", 1)[1]
+            section = section.split("##", 1)[0].strip()
+            for line in section.splitlines():
+                stripped = line.strip().lstrip("- ").strip("`")
+                if stripped and stripped != "(none)":
+                    constraints.append(stripped)
 
         created_str = frontmatter.get("created_at", "")
         try:
             created_at = datetime.fromisoformat(created_str)
         except (ValueError, TypeError):
-            created_at = datetime.now()
+            created_at = datetime.now(tz=timezone.utc)
 
         return TaskMessage(
             task_id=frontmatter["task_id"],
@@ -92,9 +117,9 @@ class TaskWatcher:
             status=TaskStatus(frontmatter.get("status", "pending")),
             priority=Priority(frontmatter.get("priority", "medium")),
             created_at=created_at,
-            objective="",
-            target_files=[],
-            constraints=[],
+            objective=objective,
+            target_files=target_files,
+            constraints=constraints,
             depends_on=frontmatter.get("depends_on", []),
             response=response,
         )

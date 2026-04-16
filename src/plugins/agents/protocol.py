@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -40,7 +41,13 @@ class TaskMessage:
     priority: Priority
     created_at: datetime
     objective: str
-    target_files: list[Path] = field(default_factory=list)
-    constraints: list[str] = field(default_factory=list)
-    depends_on: list[str] = field(default_factory=list)
+    completed_at: datetime | None = None
+    target_files: Sequence[Path] = field(default_factory=tuple)
+    constraints: Sequence[str] = field(default_factory=tuple)
+    depends_on: Sequence[str] = field(default_factory=tuple)
     response: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target_files", tuple(self.target_files))
+        object.__setattr__(self, "constraints", tuple(self.constraints))
+        object.__setattr__(self, "depends_on", tuple(self.depends_on))

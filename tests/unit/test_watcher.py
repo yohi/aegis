@@ -31,7 +31,7 @@ depends_on: []
 ## Response
 Test findings here.
 """
-        (task_dir / f"TASK-20260416-001-linting-to-techlead.md").write_text(content)
+        (task_dir / f"{task_id}-linting-to-techlead.md").write_text(content)
 
     @pytest.mark.asyncio
     async def test_collect_completed_results(self, task_dir: Path) -> None:
