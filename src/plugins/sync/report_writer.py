@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
-from src.core.types import ReviewResult
+import structlog
 
-logger = logging.getLogger(__name__)
+from core.types import ReviewResult
+
+logger = structlog.get_logger()
 
 
 class ReportWriter:
@@ -33,6 +34,8 @@ class ReportWriter:
             f"Review Report: {result.request_id}",
             "--content",
             report_content,
+            "--template-id",
+            template_id,
         )
         doc_id = json.loads(stdout).get("id", "")
         logger.info("Report written to Google Docs", doc_id=doc_id)
@@ -41,6 +44,7 @@ class ReportWriter:
     async def append_metrics_sheet(self, result: ReviewResult, sheet_id: str) -> None:
         """Append metrics row to Google Sheets."""
         self._validate_arg(sheet_id)
+        self._validate_arg(result.request_id)
         row_data = json.dumps(
             {
                 "request_id": result.request_id,
