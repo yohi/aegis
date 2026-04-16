@@ -12,7 +12,7 @@ from tests.integration.conftest import requires_gcp
 class TestSecurityPipelineIntegration:
     """These tests call actual Model Armor APIs."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Integration test placeholder — implementation pending")
     async def test_placeholder(self) -> None:
-        """Placeholder — will be implemented when GCP env is ready."""
-        pytest.skip("Integration test placeholder")
+        """Placeholder."""
+        pass

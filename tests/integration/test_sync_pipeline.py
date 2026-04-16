@@ -12,7 +12,7 @@ from tests.integration.conftest import requires_gcp
 class TestSyncPipelineIntegration:
     """These tests call actual Google Drive / NotebookLM APIs."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Integration test placeholder — implementation pending")
     async def test_placeholder(self) -> None:
-        """Placeholder — will be implemented when GCP env is ready."""
-        pytest.skip("Integration test placeholder")
+        """Placeholder."""
+        pass

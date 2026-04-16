@@ -22,9 +22,9 @@ logger = structlog.get_logger()
 class Orchestrator:
     """Coordinates the full review pipeline."""
 
-    _io_semaphore = Semaphore(10)
 
     def __init__(self, shield: SecurityShield) -> None:
+        self._io_semaphore = Semaphore(10)
         self.shield = shield
 
     async def _read_file(self, file: Path) -> tuple[Path, str]:
@@ -32,9 +32,9 @@ class Orchestrator:
         async with self._io_semaphore:
             try:
                 content = await asyncio.to_thread(file.read_text, encoding="utf-8")
-            except UnicodeDecodeError as exc:
+            except (UnicodeDecodeError, OSError) as exc:
                 raise SyncError(
-                    f"Cannot read {file}: binary or non-UTF-8 encoding detected"
+                    f"Cannot read {file}: {exc}"
                 ) from exc
         return file, content
 
