@@ -82,53 +82,63 @@ class ModelArmorMiddleware:
 
         Supports both real SanitizeResponse (Protobuf) and test fakes (dict).
         """
+        # 1. Direct findings list (common in tests/fakes)
+        findings = self._parse_explicit_findings(response)
+        if findings:
+            return findings
+
+        # 2. Fallback to sanitization_result (Protobuf responses)
+        return self._parse_protobuf_response(response)
+
+    def _parse_explicit_findings(self, response: Any) -> list[ShieldFinding]:
+        """Parse explicit findings list from response."""
         findings: list[ShieldFinding] = []
+        if not (hasattr(response, "findings") and isinstance(response.findings, list | tuple)):
+            return findings
 
-        # 1. Process explicit 'findings' list (if populated)
-        if hasattr(response, "findings") and isinstance(response.findings, list | tuple):
-            for item in response.findings:
-                # Support both dict (tests/fakes) and Protobuf/Object
-                category = (
-                    item.get("category")
-                    if isinstance(item, dict)
-                    else getattr(item, "category", None)
-                ) or "unknown"
-                severity = (
-                    item.get("severity")
-                    if isinstance(item, dict)
-                    else getattr(item, "severity", None)
-                ) or "low"
-                description = (
-                    item.get("description")
-                    if isinstance(item, dict)
-                    else getattr(item, "description", None)
-                ) or ""
+        for item in response.findings:
+            category = (
+                item.get("category")
+                if isinstance(item, dict)
+                else getattr(item, "category", None)
+            ) or "unknown"
+            severity = (
+                item.get("severity")
+                if isinstance(item, dict)
+                else getattr(item, "severity", None)
+            ) or "low"
+            description = (
+                item.get("description")
+                if isinstance(item, dict)
+                else getattr(item, "description", None)
+            ) or ""
 
-                findings.append(
-                    ShieldFinding(
-                        category=category,
-                        severity=severity,  # type: ignore[arg-type]
-                        description=description,
-                    )
+            findings.append(
+                ShieldFinding(
+                    category=category,
+                    severity=severity,  # type: ignore[arg-type]
+                    description=description,
                 )
-            # If we found direct findings, we prioritize them
-            if findings:
-                return findings
-
-        # 2. Fallback to 'sanitization_result' (common in Protobuf responses)
-        if hasattr(response, "sanitization_result"):
-            result = response.sanitization_result
-            if hasattr(result, "filter_results"):
-                for filter_name, filter_result in result.filter_results.items():
-                    # Check match_state (expected to be an Enum or string)
-                    match_state = getattr(filter_result, "match_state", "NO_MATCH")
-                    if str(match_state) != "NO_MATCH":
-                        findings.append(
-                            ShieldFinding(
-                                category=filter_name,
-                                severity="high",  # Fallback severity
-                                description=f"Filter matched: {filter_name} ({match_state})",
-                            )
-                        )
-
+            )
         return findings
+
+    def _parse_protobuf_response(self, response: Any) -> list[ShieldFinding]:
+        """Parse complex Protobuf-style response structure."""
+        findings: list[ShieldFinding] = []
+        if not hasattr(response, "sanitization_result"):
+            return findings
+
+        result = response.sanitization_result
+        if hasattr(result, "filter_results"):
+            for filter_name, filter_result in result.filter_results.items():
+                match_state = getattr(filter_result, "match_state", "NO_MATCH")
+                if str(match_state) != "NO_MATCH":
+                    findings.append(
+                        ShieldFinding(
+                            category=filter_name,
+                            severity="high",
+                            description=f"Filter matched: {filter_name} ({match_state})",
+                        )
+                    )
+        return findings
+
