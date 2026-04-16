@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import Semaphore
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -23,7 +23,6 @@ logger = structlog.get_logger()
 
 class Orchestrator:
     """Coordinates the full review pipeline."""
-
 
     def __init__(
         self,
@@ -44,9 +43,7 @@ class Orchestrator:
             try:
                 content = await asyncio.to_thread(file.read_text, encoding="utf-8")
             except (UnicodeDecodeError, OSError) as exc:
-                raise SyncError(
-                    f"Cannot read {file}: {exc}"
-                ) from exc
+                raise SyncError(f"Cannot read {file}: {exc}") from exc
         return file, content
 
     async def _shield_file(self, file: Path, content: str, request_id: str) -> None:
@@ -63,9 +60,7 @@ class Orchestrator:
                 categories=categories,
                 request_id=request_id,
             )
-            raise SecurityBlockedError(
-                f"Input blocked for {file.name}: {categories}"
-            )
+            raise SecurityBlockedError(f"Input blocked for {file.name}: {categories}")
 
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
         """Execute the full review pipeline."""
@@ -122,8 +117,5 @@ class Orchestrator:
             review_output = review_output.with_redacted_summary()
         else:
             review_output = review_output.with_summary(output_result.sanitized_content)
-
-        return review_output
-sanitized_content)
 
         return review_output
