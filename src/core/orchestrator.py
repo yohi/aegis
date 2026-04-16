@@ -102,8 +102,6 @@ class Orchestrator:
                     raise exc from eg
             raise  # Fallback for unexpected exceptions
 
-        from datetime import datetime
-
         logger.info(
             "state_transition",
             timestamp=datetime.now(UTC).isoformat(),
@@ -124,5 +122,8 @@ class Orchestrator:
             review_output = review_output.with_redacted_summary()
         else:
             review_output = review_output.with_summary(output_result.sanitized_content)
+
+        return review_output
+sanitized_content)
 
         return review_output
