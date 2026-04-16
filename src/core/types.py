@@ -116,4 +116,8 @@ class ReviewResult:
         """Return a copy with redacted summary."""
         return dataclasses.replace(self, summary="[REDACTED]")
 
+    def with_summary(self, summary: str) -> ReviewResult:
+        """Return a copy with a updated summary."""
+        return dataclasses.replace(self, summary=summary)
+
 

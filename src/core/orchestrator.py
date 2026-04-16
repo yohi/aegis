@@ -70,5 +70,7 @@ class Orchestrator:
         output_result = await self.shield.shield_output(review_output.summary)
         if not output_result.allowed:
             review_output = review_output.with_redacted_summary()
+        else:
+            review_output = review_output.with_summary(output_result.sanitized_content)
 
         return review_output
