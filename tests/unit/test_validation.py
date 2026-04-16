@@ -17,11 +17,14 @@ def test_security_config_allows_empty_project_id_for_initialization() -> None:
 def test_app_config_env_prefix_change() -> None:
     """AppConfig should pick up security settings with the new LLM_SECURITY_ prefix."""
     os.environ["LLM_SECURITY_GCP_PROJECT_ID"] = "test-project-from-env"
+    os.environ["LLM_SECURITY_LOCATION"] = "asia-northeast1"
     try:
         config = AppConfig()
         assert config.security.gcp_project_id == "test-project-from-env"
+        assert config.security.location == "asia-northeast1"
     finally:
         del os.environ["LLM_SECURITY_GCP_PROJECT_ID"]
+        del os.environ["LLM_SECURITY_LOCATION"]
 
 
 class FakeResponse:

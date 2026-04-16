@@ -13,7 +13,7 @@
 | `LLM_REVIEW_SYNC_NOTEBOOK_ID` | Target NotebookLM ID | Yes |
 | `LLM_REVIEW_SYNC_DRIVE_FOLDER_ID` | Upload destination folder ID | Yes |
 | `LLM_SECURITY_GCP_PROJECT_ID` | GCP project ID for Model Armor | Yes |
-| `LLM_SECURITY_MODEL_ARMOR_LOCATION` | Model Armor region | No (default: us-central1) |
+| `LLM_SECURITY_LOCATION` | Model Armor region | No (default: us-central1) |
 | `LLM_SECURITY_BLOCK_ON_HIGH_SEVERITY` | Block on high severity findings | No (default: true) |
 | `LLM_REVIEW_RETRY_MAX_ATTEMPTS` | Max retry attempts | No (default: 3) |
 
