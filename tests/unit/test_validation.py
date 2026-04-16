@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import os
-import pytest
-from pydantic import ValidationError
 
-from core.config import SecurityConfig, AppConfig
+from core.config import AppConfig, SecurityConfig
 from plugins.security.middleware import ModelArmorMiddleware
 
 
