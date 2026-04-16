@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🛡️ Aegis 
 **Autonomous Multi-Agent LLM Review Architecture**
 
@@ -22,10 +21,6 @@
 - ⚙️ **Isolated Execution**: Devcontainerによる、完全に隔離された安全なテスト・静的解析環境の強制。
 
 **Architecture Pattern**: プラグインベース・マイクロカーネルアーキテクチャ（Protocol-first design）
-=======
-# LLM Review System
-
-Autonomous, multi-agent LLM code review system powered by NotebookLM Enterprise and Google Cloud Model Armor.
 
 ## Architecture
 
@@ -36,7 +31,7 @@ All plugins implement `core/protocols.py` Protocols — no concrete class depend
 
 1. Open in DevContainer (VS Code / Cursor)
 2. Environment is auto-configured via `post-create.sh`
-3. Run: `pip install -e ".[dev]"`
+3. Run: `pip install -e ".[dev]"` — *only* if `post-create.sh` didn't run or to re-install after dependency changes.
 
 ## Development
 
@@ -54,4 +49,3 @@ mypy src/
 ## License
 
 See [LICENSE](LICENSE).
->>>>>>> feat/01-project-foundation
