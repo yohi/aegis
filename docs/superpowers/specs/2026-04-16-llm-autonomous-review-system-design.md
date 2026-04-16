@@ -1122,7 +1122,7 @@ class RetryConfig(BaseSettings):
 
     max_attempts: int = 3
     initial_backoff: float = 1.0
-    max_backoff: float = 30.0
+    max_backoff: float = 60.0
     retryable_exceptions: list[str] = [
         "google.api_core.exceptions.ServiceUnavailable",
         "google.api_core.exceptions.DeadlineExceeded",
