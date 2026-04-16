@@ -50,6 +50,17 @@ class ShieldFinding:
     span_start: int | None = None
     span_end: int | None = None
 
+    def __post_init__(self) -> None:
+        if (self.span_start is None) != (self.span_end is None):
+            raise ValueError("Both span_start and span_end must be set or both must be None")
+        if self.span_start is not None and self.span_end is not None:
+            if self.span_start < 0 or self.span_end < 0:
+                raise ValueError("Span indices must be non-negative")
+            if self.span_start > self.span_end:
+                raise ValueError(
+                    f"span_start ({self.span_start}) cannot be greater than span_end ({self.span_end})"
+                )
+
 
 @dataclass(frozen=True)
 class ShieldResult:
@@ -94,6 +105,13 @@ class SyncReport:
     errors: Sequence[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
+        if self.total_files < 0 or self.synced_count < 0 or self.skipped_count < 0:
+            raise ValueError("All counts in SyncReport must be non-negative")
+        if self.synced_count + self.skipped_count > self.total_files:
+            raise ValueError(
+                f"Sum of synced ({self.synced_count}) and skipped ({self.skipped_count}) "
+                f"exceeds total_files ({self.total_files})"
+            )
         object.__setattr__(self, "errors", tuple(self.errors))
 
 
@@ -140,5 +158,3 @@ class ReviewResult:
     def with_summary(self, summary: str) -> ReviewResult:
         """Return a copy with an updated summary."""
         return dataclasses.replace(self, summary=summary)
-
-
