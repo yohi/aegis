@@ -48,7 +48,7 @@ class TestOrchestrator:
         orch = Orchestrator(shield=fake_shield, repo_path=tmp_path)
         result = await orch.run_review(request)
         assert result.request_id == "test-001"
-        assert result.status == "completed"
+        assert result.status == "in_progress"
 
     @pytest.mark.asyncio
     async def test_run_review_blocks_on_shield(

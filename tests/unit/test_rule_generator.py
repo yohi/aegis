@@ -51,8 +51,8 @@ class TestRuleGenerator:
         assert output_file.name == "security.mdc"
         
         content = output_file.read_text(encoding="utf-8")
-        # Check if description is quoted
-        assert 'description: "Security # guardrails"' in content
+        # yaml.safe_dump might use single quotes or double quotes depending on content
+        assert "description: 'Security # guardrails'" in content or 'description: "Security # guardrails"' in content
         # Check if directory was created
         assert target_dir.exists()
 
@@ -66,4 +66,4 @@ class TestRuleGenerator:
         generated = gen.generate(target_dir, overrides=overrides)
         
         content = generated[0].read_text(encoding="utf-8")
-        assert 'globs: ["src/*.py"]' in content
+        assert "globs:\n- src/*.py" in content

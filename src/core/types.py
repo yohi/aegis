@@ -11,7 +11,7 @@ from typing import Any, Literal
 # --- Types ---
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
-ReviewStatus = Literal["pending", "running", "completed", "failed"]
+ReviewStatus = Literal["pending", "in_progress", "completed", "failed"]
 
 
 # --- Exceptions ---
