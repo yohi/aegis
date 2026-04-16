@@ -23,8 +23,14 @@ class Orchestrator:
     """Coordinates the full review pipeline."""
 
 
-    def __init__(self, shield: SecurityShield, repo_path: Path) -> None:
+    def __init__(
+        self,
+        shield: SecurityShield,
+        repo_path: Path,
+        max_concurrent_shields: int = 10,
+    ) -> None:
         self._io_semaphore = Semaphore(10)
+        self._shield_semaphore = Semaphore(max_concurrent_shields)
         self.shield = shield
         self.repo_path = repo_path
 
@@ -39,12 +45,22 @@ class Orchestrator:
                 ) from exc
         return file, content
 
-    async def _shield_file(self, file: Path, content: str) -> None:
+    async def _shield_file(self, file: Path, content: str, request_id: str) -> None:
         """Shield a single file input and raise error if blocked."""
-        result = await self.shield.shield_input(content)
+        async with self._shield_semaphore:
+            result = await self.shield.shield_input(content)
+
         if not result.allowed:
+            categories = [f.category for f in result.findings]
+            logger.warning(
+                "security_input_blocked",
+                message=f"Input blocked for {file.name}",
+                file=file.name,
+                categories=categories,
+                request_id=request_id,
+            )
             raise SecurityBlockedError(
-                f"Input blocked for {file.name}: {[f.category for f in result.findings]}"
+                f"Input blocked for {file.name}: {categories}"
             )
 
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
@@ -65,7 +81,7 @@ class Orchestrator:
         try:
             async with asyncio.TaskGroup() as tg:
                 for file, content in file_contents:
-                    tg.create_task(self._shield_file(file, content))
+                    tg.create_task(self._shield_file(file, content, request.request_id))
         except ExceptionGroup as eg:
             # Re-raise the first SecurityBlockedError or other ReviewError to maintain API consistency
             # If multiple files are blocked, TaskGroup collects all, but we only need to report the first failure.
@@ -76,7 +92,7 @@ class Orchestrator:
 
         review_output = ReviewResult(
             request_id=request.request_id,
-            status="completed",
+            status="in_progress",
             findings=(),
             summary="Review completed successfully.",
         )
