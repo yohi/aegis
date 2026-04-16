@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import structlog
-
-logger = structlog.get_logger()
+from typing import Any
 
 
 class ModelArmorClient:
     """Google Cloud Model Armor API client.
 
-    In production, this wraps google.cloud.modelarmor_v1.ModelArmorServiceAsyncClient.
+    In production, this wraps google.cloud.modelarmor_v1.ModelArmorAsyncClient.
     The interface is designed for dependency injection / test replacement.
     """
 
@@ -23,51 +21,46 @@ class ModelArmorClient:
         self.project_id = project_id
         self.location = location
         self.template_id = template_id
-        self._client: object | None = None
+        self._client: Any | None = None
 
     @property
     def _template_name(self) -> str:
         return f"projects/{self.project_id}/locations/{self.location}/templates/{self.template_id}"
 
-    async def _get_client(self) -> object:
+    async def _get_client(self) -> Any:
         """Lazy initialization to obtain client."""
         if self._client is None:
             try:
-                from google.cloud.modelarmor_v1 import ModelArmorServiceAsyncClient
+                from google.cloud.modelarmor_v1 import ModelArmorAsyncClient
 
-                self._client = ModelArmorServiceAsyncClient()
-            except ImportError:
+                self._client = ModelArmorAsyncClient()
+            except ImportError as exc:
                 raise ImportError(
                     "google-cloud-modelarmor is required. "
                     "Install with: pip install google-cloud-modelarmor"
-                )
+                ) from exc
         return self._client
 
-    async def sanitize_input(self, content: str) -> object:
+    async def sanitize_input(self, content: str) -> Any:
         """Scan input content with Model Armor."""
         client = await self._get_client()
-        from google.cloud.modelarmor_v1 import (
-            SanitizeUserPromptRequest,
-            UserPromptData,
-        )
+        from google.cloud.modelarmor_v1 import SanitizeUserPromptRequest
 
+        # Use dictionary for data to bypass missing class names in older/different SDK versions
         request = SanitizeUserPromptRequest(
             name=self._template_name,
-            user_prompt_data=UserPromptData(text=content),
+            user_prompt_data={"text": content},
         )
         return await client.sanitize_user_prompt(request=request)
 
-    async def sanitize_output(self, content: str) -> object:
+    async def sanitize_output(self, content: str) -> Any:
         """Scan LLM output with Model Armor (data leak prevention)."""
         client = await self._get_client()
-        from google.cloud.modelarmor_v1 import (
-            ModelResponseData,
-            SanitizeModelResponseRequest,
-        )
+        from google.cloud.modelarmor_v1 import SanitizeModelResponseRequest
 
         request = SanitizeModelResponseRequest(
             name=self._template_name,
-            model_response_data=ModelResponseData(text=content),
+            model_response_data={"text": content},
         )
         return await client.sanitize_model_response(request=request)
 

@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from core.types import (
-    Finding,
-    ReviewRequest,
-    ReviewResult,
+    AgentTimeoutError,
     ReviewSystemError,
     SecurityBlockedError,
     ShieldFinding,
     ShieldResult,
-    SourceInfo,
     SyncError,
+    SyncReport,
     SyncResult,
-    AgentTimeoutError,
     TaskDeadlockError,
 )
 
@@ -35,10 +31,35 @@ class TestShieldFinding:
         assert finding.span_start is None
         assert finding.span_end is None
 
+    def test_shield_finding_with_valid_spans(self) -> None:
+        finding = ShieldFinding(
+            category="pii",
+            severity="medium",
+            description="PII detected",
+            span_start=10,
+            span_end=20,
+        )
+        assert finding.span_start == 10
+        assert finding.span_end == 20
+
+    def test_shield_finding_rejects_single_span_value(self) -> None:
+        with pytest.raises(ValueError, match="Both span_start and span_end must be set"):
+            ShieldFinding(category="x", severity="low", description="x", span_start=10)
+        with pytest.raises(ValueError, match="Both span_start and span_end must be set"):
+            ShieldFinding(category="x", severity="low", description="x", span_end=20)
+
+    def test_shield_finding_rejects_negative_spans(self) -> None:
+        with pytest.raises(ValueError, match="Span indices must be non-negative"):
+            ShieldFinding(category="x", severity="low", description="x", span_start=-1, span_end=10)
+
+    def test_shield_finding_rejects_invalid_range(self) -> None:
+        with pytest.raises(ValueError, match="span_start.*cannot be greater than span_end"):
+            ShieldFinding(category="x", severity="low", description="x", span_start=20, span_end=10)
+
     def test_shield_finding_is_immutable(self) -> None:
         finding = ShieldFinding(category="pii", severity="medium", description="PII detected")
         with pytest.raises(AttributeError):
-            finding.category = "malicious"
+            finding.category = "malicious"  # type: ignore[misc]
 
 
 class TestShieldResult:
@@ -72,7 +93,25 @@ class TestSyncResult:
     def test_create_sync_result(self) -> None:
         result = SyncResult(synced_count=5, errors=[])
         assert result.synced_count == 5
-        assert result.errors == []
+        assert result.errors == ()
+
+
+class TestSyncReport:
+    """SyncReport validates consistency."""
+
+    def test_valid_sync_report(self) -> None:
+        report = SyncReport(total_files=10, synced_count=7, skipped_count=3)
+        assert report.total_files == 10
+        assert report.synced_count == 7
+        assert report.skipped_count == 3
+
+    def test_rejects_negative_counts(self) -> None:
+        with pytest.raises(ValueError, match="must be non-negative"):
+            SyncReport(total_files=-1, synced_count=0, skipped_count=0)
+
+    def test_rejects_counts_exceeding_total(self) -> None:
+        with pytest.raises(ValueError, match="exceeds total_files"):
+            SyncReport(total_files=10, synced_count=8, skipped_count=3)
 
 
 class TestExceptionHierarchy:

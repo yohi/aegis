@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import fnmatch
+import asyncio
 from pathlib import Path
 
 import structlog
@@ -37,44 +37,17 @@ class NotebookSyncer:
         drive_file_ids: list[str] = []
 
         for file_path in target_files:
-            file_size_kb = file_path.stat().st_size / 1024
-            if file_size_kb > self.config.max_file_size_kb:
-                logger.info(
-                    "File exceeds size limit, skipping",
-                    file=str(file_path),
-                    size_kb=file_size_kb,
-                    limit_kb=self.config.max_file_size_kb,
-                )
-                skipped_count += 1
-                continue
-
             try:
-                content = file_path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                logger.warning("Binary file skipped", file=str(file_path))
+                file_id = await self._process_and_upload_file(file_path)
+                if file_id:
+                    drive_file_ids.append(file_id)
+                    synced_count += 1
+                else:
+                    skipped_count += 1
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.error("Processing failed", file=str(file_path), error=str(exc))
+                errors.append(f"Processing failed for {file_path}: {exc}")
                 skipped_count += 1
-                errors.append(f"Binary file skipped: {file_path}")
-                continue
-
-            shield_result = await self.security_shield.shield_input(content)
-            if not shield_result.allowed:
-                logger.warning(
-                    "File blocked by security shield",
-                    file=str(file_path),
-                    findings=[f.category for f in shield_result.findings],
-                )
-                skipped_count += 1
-                errors.append(f"Blocked by shield: {file_path}")
-                continue
-
-            try:
-                file_id = await self.drive_client.upload_source(
-                    file_path, self.config.drive_folder_id
-                )
-                drive_file_ids.append(file_id)
-                synced_count += 1
-            except Exception as exc:
-                errors.append(f"Upload failed for {file_path}: {exc}")
 
         if drive_file_ids:
             try:
@@ -89,6 +62,41 @@ class NotebookSyncer:
             errors=errors,
         )
 
+    async def _process_and_upload_file(self, file_path: Path) -> str | None:
+        """Process a single file (size check, sync read, shield) and upload.
+        
+        Return file_id if successful, None if skipped.
+        """
+        file_size_kb = file_path.stat().st_size / 1024
+        if file_size_kb > self.config.max_file_size_kb:
+            logger.info(
+                "File exceeds size limit, skipping",
+                file=str(file_path),
+                size_kb=file_size_kb,
+                limit_kb=self.config.max_file_size_kb,
+            )
+            return None
+
+        try:
+            # Offload blocking I/O to a thread
+            content = await asyncio.to_thread(file_path.read_text, encoding="utf-8")
+        except UnicodeDecodeError:
+            logger.warning("Binary file skipped", file=str(file_path))
+            return None
+
+        shield_result = await self.security_shield.shield_input(content)
+        if not shield_result.allowed:
+            logger.warning(
+                "File blocked by security shield",
+                file=str(file_path),
+                findings=[f.category for f in shield_result.findings],
+            )
+            return None
+
+        return await self.drive_client.upload_source(
+            file_path, self.config.drive_folder_id
+        )
+
     def _collect_files(self, repo_path: Path) -> list[Path]:
         """Collect files matching include patterns, excluding exclude patterns."""
         matched: list[Path] = []
@@ -96,9 +104,11 @@ class NotebookSyncer:
             for file_path in repo_path.glob(pattern):
                 if not file_path.is_file():
                     continue
-                relative = str(file_path.relative_to(repo_path))
+                
+                # Use Path.match on the relative path for robust exclusion (supports **)
+                relative_path = file_path.relative_to(repo_path)
                 excluded = any(
-                    fnmatch.fnmatch(relative, exc) for exc in self.config.exclude_patterns
+                    relative_path.match(exc) for exc in self.config.exclude_patterns
                 )
                 if not excluded:
                     matched.append(file_path)

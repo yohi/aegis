@@ -18,9 +18,6 @@ class _ArmorClientProtocol(Protocol):
     async def sanitize_output(self, content: str) -> Any: ...
     async def close(self) -> None: ...
 
-    async def shield_input(self, content: str) -> ShieldResult: ...
-    async def shield_output(self, content: str) -> ShieldResult: ...
-
 
 class ModelArmorMiddleware:
     """Security middleware implementing SecurityShield Protocol."""
@@ -43,8 +40,9 @@ class ModelArmorMiddleware:
 
         if self.log_findings and findings:
             logger.warning(
-                "Input shield findings",
-                extra={"finding_count": len(findings), "blocked": blocked},
+                "Input shield findings detected",
+                finding_count=len(findings),
+                blocked=blocked,
             )
 
         return ShieldResult(
@@ -59,6 +57,13 @@ class ModelArmorMiddleware:
         response = await self.client.sanitize_output(content)
         findings = self._extract_findings(response)
         blocked = self._should_block(findings)
+
+        if self.log_findings and findings:
+            logger.warning(
+                "Output shield findings detected",
+                finding_count=len(findings),
+                blocked=blocked,
+            )
 
         return ShieldResult(
             allowed=not blocked,
@@ -75,36 +80,65 @@ class ModelArmorMiddleware:
     def _extract_findings(self, response: Any) -> list[ShieldFinding]:
         """Convert API response to ShieldFinding list.
 
-        Supports both real SanitizeResponse and test fakes.
+        Supports both real SanitizeResponse (Protobuf) and test fakes (dict).
         """
-        findings: list[ShieldFinding] = []
-
-        if hasattr(response, "findings") and isinstance(response.findings, list):
-            for item in response.findings:
-                if isinstance(item, dict):
-                    findings.append(
-                        ShieldFinding(
-                            category=item.get("category", "unknown"),
-                            severity=item.get("severity", "low"),
-                            description=item.get("description", ""),
-                        )
-                    )
+        # 1. Direct findings list (common in tests/fakes)
+        findings = self._parse_explicit_findings(response)
+        if findings:
             return findings
 
-        if hasattr(response, "sanitization_result"):
-            result = response.sanitization_result
-            if hasattr(result, "filter_results"):
-                for _filter_name, filter_result in result.filter_results.items():
-                    if (
-                        hasattr(filter_result, "match_state")
-                        and str(filter_result.match_state) != "NO_MATCH"
-                    ):
-                        findings.append(
-                            ShieldFinding(
-                                category=_filter_name,
-                                severity="high",
-                                description=f"Filter matched: {_filter_name}",
-                            )
-                        )
+        # 2. Fallback to sanitization_result (Protobuf responses)
+        return self._parse_protobuf_response(response)
 
+    def _parse_explicit_findings(self, response: Any) -> list[ShieldFinding]:
+        """Parse explicit findings list from response."""
+        findings: list[ShieldFinding] = []
+        if not (hasattr(response, "findings") and isinstance(response.findings, list | tuple)):
+            return findings
+
+        for item in response.findings:
+            category = (
+                item.get("category")
+                if isinstance(item, dict)
+                else getattr(item, "category", None)
+            ) or "unknown"
+            severity = (
+                item.get("severity")
+                if isinstance(item, dict)
+                else getattr(item, "severity", None)
+            ) or "low"
+            description = (
+                item.get("description")
+                if isinstance(item, dict)
+                else getattr(item, "description", None)
+            ) or ""
+
+            findings.append(
+                ShieldFinding(
+                    category=category,
+                    severity=severity,  # type: ignore[arg-type]
+                    description=description,
+                )
+            )
         return findings
+
+    def _parse_protobuf_response(self, response: Any) -> list[ShieldFinding]:
+        """Parse complex Protobuf-style response structure."""
+        findings: list[ShieldFinding] = []
+        if not hasattr(response, "sanitization_result"):
+            return findings
+
+        result = response.sanitization_result
+        if hasattr(result, "filter_results"):
+            for filter_name, filter_result in result.filter_results.items():
+                match_state = getattr(filter_result, "match_state", "NO_MATCH")
+                if str(match_state) != "NO_MATCH":
+                    findings.append(
+                        ShieldFinding(
+                            category=filter_name,
+                            severity="high",
+                            description=f"Filter matched: {filter_name} ({match_state})",
+                        )
+                    )
+        return findings
+
