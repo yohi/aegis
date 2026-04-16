@@ -55,3 +55,69 @@ Test findings here.
             await watcher.wait_for_completion(
                 ["TASK-20260416-001"], timeout=0.1
             )
+
+    @pytest.mark.asyncio
+    async def test_parse_with_html_comments_and_completed_at(self, task_dir: Path) -> None:
+        from plugins.agents.watcher import TaskWatcher
+        from datetime import datetime
+
+        task_id = "TASK-COMPLEX-001"
+        completed_at_str = "2026-04-17T10:00:00+00:00"
+        content = f"""---
+task_id: "{task_id}"
+sender: "security"
+receiver: "techlead"
+status: "completed"
+priority: "medium"
+created_at: "2026-04-17T09:00:00+00:00"
+completed_at: "{completed_at_str}"
+depends_on: []
+---
+
+## Objective
+Test complex parsing
+
+## Target Files
+- `src/main.py`
+
+## Constraints
+- No external APIs
+
+## Response
+<!-- some comment -->
+<!-- another comment -->
+Actual result content.
+"""
+        (task_dir / f"{task_id}.md").write_text(content)
+
+        watcher = TaskWatcher(task_dir)
+        results = await watcher.collect_results([task_id])
+        msg = results[task_id]
+
+        assert msg.response == "Actual result content."
+        assert msg.completed_at == datetime.fromisoformat(completed_at_str)
+        assert msg.objective == "Test complex parsing"
+        assert Path("src/main.py") in msg.target_files
+        assert "No external APIs" in msg.constraints
+
+    @pytest.mark.asyncio
+    async def test_skip_invalid_enum_values(self, task_dir: Path) -> None:
+        from plugins.agents.watcher import TaskWatcher
+
+        task_id = "TASK-INVALID-ENUM"
+        content = f"""---
+task_id: "{task_id}"
+sender: "invalid-role"
+receiver: "techlead"
+status: "completed"
+priority: "medium"
+created_at: "2026-04-17T09:00:00+00:00"
+---
+## Response
+Body
+"""
+        (task_dir / f"{task_id}.md").write_text(content)
+
+        watcher = TaskWatcher(task_dir)
+        results = await watcher.collect_results([task_id])
+        assert task_id not in results

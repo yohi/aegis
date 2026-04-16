@@ -56,6 +56,8 @@ class TaskWatcher:
 
     def _parse_task_file(self, file_path: Path) -> TaskMessage | None:
         """Parse a task Markdown file into a TaskMessage."""
+        import re
+
         content = file_path.read_text()
         parts = content.split("---", 2)
         if len(parts) < 3:
@@ -75,7 +77,14 @@ class TaskWatcher:
         response = None
         if "## Response" in body:
             response_section = body.split("## Response", 1)[1].strip()
-            if response_section and not response_section.startswith("<!--"):
+            # Strip leading HTML comments
+            while True:
+                match = re.match(r"^\s*<!--.*?-->", response_section, flags=re.DOTALL)
+                if not match:
+                    break
+                response_section = response_section[match.end():].strip()
+
+            if response_section:
                 response = response_section
 
         # Extract Objective
@@ -110,16 +119,34 @@ class TaskWatcher:
         except (ValueError, TypeError):
             created_at = datetime.now(tz=timezone.utc)
 
-        return TaskMessage(
-            task_id=frontmatter["task_id"],
-            sender=AgentRole(frontmatter.get("sender", "techlead")),
-            receiver=AgentRole(frontmatter.get("receiver", "techlead")),
-            status=TaskStatus(frontmatter.get("status", "pending")),
-            priority=Priority(frontmatter.get("priority", "medium")),
-            created_at=created_at,
-            objective=objective,
-            target_files=target_files,
-            constraints=constraints,
-            depends_on=frontmatter.get("depends_on", []),
-            response=response,
-        )
+        completed_at = None
+        completed_str = frontmatter.get("completed_at")
+        if completed_str:
+            try:
+                completed_at = datetime.fromisoformat(completed_str)
+            except (ValueError, TypeError):
+                pass
+
+        try:
+            return TaskMessage(
+                task_id=frontmatter["task_id"],
+                sender=AgentRole(frontmatter.get("sender", "techlead")),
+                receiver=AgentRole(frontmatter.get("receiver", "techlead")),
+                status=TaskStatus(frontmatter.get("status", "pending")),
+                priority=Priority(frontmatter.get("priority", "medium")),
+                created_at=created_at,
+                completed_at=completed_at,
+                objective=objective,
+                target_files=target_files,
+                constraints=constraints,
+                depends_on=frontmatter.get("depends_on", []),
+                response=response,
+            )
+        except ValueError as e:
+            logger.warning(
+                "Invalid enum value in task file",
+                path=str(file_path),
+                task_id=frontmatter.get("task_id"),
+                error=str(e),
+            )
+            return None
