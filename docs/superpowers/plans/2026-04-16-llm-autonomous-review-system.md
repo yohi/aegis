@@ -3178,7 +3178,7 @@ import pytest
 
 # Guard: skip all integration tests if GCP credentials are not set
 requires_gcp = pytest.mark.skipif(
-    not os.environ.get("LLM_SECURITY_GCP_PROJECT_ID"),
+    not os.environ.get("LLM_SECURITY_GCP_PROJECT_ID", "").strip(),
     reason="GCP credentials not configured (set LLM_SECURITY_GCP_PROJECT_ID)",
 )
 ```
