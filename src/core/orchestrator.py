@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import Semaphore
+from datetime import UTC
 from pathlib import Path
 
 import structlog
@@ -93,8 +94,11 @@ class Orchestrator:
                     raise exc from eg
             raise  # Fallback for unexpected exceptions
 
+        from datetime import datetime
+
         logger.info(
             "state_transition",
+            timestamp=datetime.now(UTC).isoformat(),
             request_id=request.request_id,
             actor="system",
             previous_state="pending",

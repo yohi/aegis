@@ -2,22 +2,17 @@
 
 Autonomous multi-agent LLM code review system.
 
-## Toolchain & Context
-- **Runtime**: Python 3.11+ via DevContainer.
-- **Package Manager**: `uv`. Use `uv sync` for setup.
-- **Important**: If `uv run` fails with build errors, use `uv run --no-project --with <deps>` to bypass package isolation.
+## ⚠️ Critical Rules (MUST)
+- **Environment**: You MUST use **DevContainer** for all development and test execution.
+- **Verification**: You MUST NOT claim success or fix completion without running tests. Evidence-based validation is mandatory.
+- **Security**: You MUST log blocked inputs as `logger.error` to ensure audit visibility. If a specific task requires suppressing this (e.g., for noise reduction during bulk debugging), you MUST ask the user for confirmation first. See [docs/SECURITY.md](docs/SECURITY.md).
 
-## Key Commands
-- **Test**: `PYTHONPATH=src uv run pytest` (Primary validation)
-- **Lint**: `uv run ruff check src/ tests/` (Use `--fix` for auto-formatting)
-- **Type Check**: `uv run mypy src/` (Requires `types-PyYAML`, `pydantic-settings`)
+## 🛠️ Standard Procedures (SHOULD)
+- **Package Manager**: Use `uv`. Run `uv sync` for environment setup.
+- **Toolchain**: Prefer `uv run --no-project --with <deps>` if standard `uv run` fails due to package isolation issues.
+- **Linting**: Run `uv run ruff check src/ tests/` and use `--fix` for auto-formatting.
+- **Architecture**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Domain Concepts
-- **SecurityShield**: Interface for input/output sanitization.
-- **ReviewResult**: Structured output containing findings and summary.
-- **Orchestrator**: Core component coordinating the pipeline.
-
-## Guidelines
-- **Logic**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- **Security**: Always log blocked inputs as `logger.error`. See [docs/SECURITY.md](docs/SECURITY.md).
-- **Verification**: Never claim success without running tests. Evidence-based completion only.
+## 💡 Preferred Conventions (MAY)
+- **Domain Language**: Use terms like `SecurityShield`, `ReviewResult`, and `Orchestrator` to align with the codebase.
+- **Type Checking**: Run `uv run mypy src/` to verify type safety (requires `types-PyYAML`).
