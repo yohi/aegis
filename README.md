@@ -21,3 +21,31 @@
 - ⚙️ **Isolated Execution**: Devcontainerによる、完全に隔離された安全なテスト・静的解析環境の強制。
 
 **Architecture Pattern**: プラグインベース・マイクロカーネルアーキテクチャ（Protocol-first design）
+
+## Architecture
+
+Plugin-based microkernel architecture with Protocol-first design.
+All plugins implement `core/protocols.py` Protocols — no concrete class dependencies.
+
+## Quick Start
+
+1. Open in DevContainer (VS Code / Cursor)
+2. Environment is auto-configured via `post-create.sh`
+3. Run: `pip install -e ".[dev]"` — *only* if `post-create.sh` didn't run or to re-install after dependency changes.
+
+## Development
+
+```bash
+# Run tests
+pytest
+
+# Lint
+ruff check src/ tests/
+
+# Type check
+mypy src/
+```
+
+## License
+
+See [LICENSE](LICENSE).
