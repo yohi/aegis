@@ -109,7 +109,9 @@ class TestOrchestrator:
             return ShieldResult(allowed=True, sanitized_content=content, findings=[])
 
         shield.shield_input.side_effect = side_effect
-        shield.shield_output.return_value = ShieldResult(allowed=True, sanitized_content="ok", findings=[])
+        shield.shield_output.return_value = ShieldResult(
+            allowed=True, sanitized_content="ok", findings=[]
+        )
 
         request = ReviewRequest(
             request_id="test-parallel",

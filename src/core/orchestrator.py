@@ -85,11 +85,12 @@ class Orchestrator:
                 for file, content in file_contents:
                     tg.create_task(self._shield_file(file, content, request.request_id))
         except ExceptionGroup as eg:
-            # Re-raise the first SecurityBlockedError or other ReviewError to maintain API consistency
-            # If multiple files are blocked, TaskGroup collects all, but we only need to report the first failure.
+            # Re-raise the first SecurityBlockedError or other ReviewError
+            # to maintain API consistency. If multiple files are blocked,
+            # TaskGroup collects all, but we only need to report the first failure.
             for exc in eg.exceptions:
                 if isinstance(exc, SecurityBlockedError):
-                    raise exc
+                    raise exc from eg
             raise  # Fallback for unexpected exceptions
 
         logger.info(
