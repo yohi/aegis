@@ -1,0 +1,21 @@
+name: "150-performance"
+description: "Architecture and performance patterns for UI components"
+globs:
+  - "src/components/**/*.tsx"
+  - "src/components/**/*.ts"
+priority: 150
+sections:
+  - title: "Rendering"
+    rules:
+      - "Use `React.memo()` for components receiving stable props."
+      - "Extract expensive computations into `useMemo()` with explicit deps."
+      - "Prefer `useCallback()` for event handlers passed to child components."
+  - title: "Data Fetching"
+    rules:
+      - "Implement stale-while-revalidate pattern for API responses."
+      - "Set explicit cache TTLs for each endpoint category."
+      - "Use streaming responses for payloads exceeding 100KB."
+  - title: "Bundle Size"
+    rules:
+      - "Use dynamic `import()` for routes and heavy components."
+      - "Audit bundle impact before adding new dependencies."

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import Semaphore
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -12,6 +13,7 @@ from .protocols import SecurityShield
 from .types import (
     ReviewRequest,
     ReviewResult,
+    ReviewSystemError,
     SecurityBlockedError,
     SyncError,
 )
@@ -22,9 +24,16 @@ logger = structlog.get_logger()
 class Orchestrator:
     """Coordinates the full review pipeline."""
 
-
-    def __init__(self, shield: SecurityShield, repo_path: Path) -> None:
+    def __init__(
+        self,
+        shield: SecurityShield,
+        repo_path: Path,
+        max_concurrent_shields: int = 10,
+    ) -> None:
+        if not isinstance(max_concurrent_shields, int) or max_concurrent_shields < 1:
+            raise ValueError("max_concurrent_shields must be an int >= 1")
         self._io_semaphore = Semaphore(10)
+        self._shield_semaphore = Semaphore(max_concurrent_shields)
         self.shield = shield
         self.repo_path = repo_path
 
@@ -34,10 +43,24 @@ class Orchestrator:
             try:
                 content = await asyncio.to_thread(file.read_text, encoding="utf-8")
             except (UnicodeDecodeError, OSError) as exc:
-                raise SyncError(
-                    f"Cannot read {file}: {exc}"
-                ) from exc
+                raise SyncError(f"Cannot read {file}: {exc}") from exc
         return file, content
+
+    async def _shield_file(self, file: Path, content: str, request_id: str) -> None:
+        """Shield a single file input and raise error if blocked."""
+        async with self._shield_semaphore:
+            result = await self.shield.shield_input(content)
+
+        if not result.allowed:
+            categories = [f.category for f in result.findings]
+            logger.error(
+                "security_input_blocked",
+                message=f"Input blocked for {file.name}",
+                file=file.name,
+                categories=categories,
+                request_id=request_id,
+            )
+            raise SecurityBlockedError(f"Input blocked for {file.name}: {categories}")
 
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
         """Execute the full review pipeline."""
@@ -53,18 +76,40 @@ class Orchestrator:
 
         file_contents = await asyncio.gather(*(self._read_file(f) for f in sanitized_files))
 
-        for file, content in file_contents:
-            result = await self.shield.shield_input(content)
-            if not result.allowed:
-                raise SecurityBlockedError(
-                    f"Input blocked for {file.name}: {[f.category for f in result.findings]}"
-                )
+        # Parallelize security shielding for all files using TaskGroup for robust cancellation
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for file, content in file_contents:
+                    tg.create_task(self._shield_file(file, content, request.request_id))
+        except ExceptionGroup as eg:
+            # Re-raise the first SecurityBlockedError or other ReviewSystemError
+            # to maintain API consistency. If multiple files are blocked,
+            # TaskGroup collects all, but we only need to report the first failure.
+            if len(eg.exceptions) == 1:
+                raise eg.exceptions[0] from eg
 
+            # Prioritize SecurityBlockedError, then any ReviewSystemError
+            for exc in eg.exceptions:
+                if isinstance(exc, SecurityBlockedError):
+                    raise exc from eg
+            for exc in eg.exceptions:
+                if isinstance(exc, ReviewSystemError):
+                    raise exc from eg
+            raise  # Fallback for unexpected exceptions
+
+        logger.info(
+            "state_transition",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=request.request_id,
+            actor="system",
+            previous_state="pending",
+            next_state="in_progress",
+        )
         review_output = ReviewResult(
             request_id=request.request_id,
-            status="completed",
+            status="in_progress",
             findings=(),
-            summary="Review completed successfully.",
+            summary="Review in progress.",
         )
 
         output_result = await self.shield.shield_output(review_output.summary)

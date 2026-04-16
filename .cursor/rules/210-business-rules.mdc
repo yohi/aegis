@@ -1,0 +1,20 @@
+---
+description: "Domain-specific logic constraints"
+globs: ["src/domain/**/*.ts", "src/domain/**/*.py"]
+alwaysApply: false
+---
+
+## Review Workflow
+- A review transitions through states: PENDING → IN_PROGRESS → COMPLETED | FAILED.
+- State transitions use explicit guard conditions validated before mutation.
+- Every state change emits an audit event with timestamp, actor, previous state and next state.
+  - *Note: Coding guideline "Include previous and next state in audit events" MUST be followed.*
+
+## Data Integrity
+- Review results are append-only. Completed reviews are immutable.
+- Use optimistic locking (version field) for concurrent review updates.
+- Retain raw LLM output alongside processed/summarized results.
+
+## Multi-Repository
+- Each repository maintains an independent review context.
+- Cross-repository findings link via shared issue taxonomy.

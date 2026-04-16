@@ -1,0 +1,15 @@
+---
+description: "Debugging and troubleshooting guidelines"
+globs: ["**/*.py", "**/*.ts"]
+alwaysApply: false
+---
+
+## Debugging
+- Use structured logging with context (structlog recommended).
+- Include correlation IDs in all log entries.
+- Log at appropriate levels: ERROR for failures, INFO for key events.
+
+## Troubleshooting
+- Check security shield logs first when content is blocked.
+- Verify GCP credentials are valid and not expired.
+- Review Model Armor templates for false positives.

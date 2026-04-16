@@ -36,6 +36,7 @@ class ReportWriter:
             report_content,
             "--template-id",
             template_id,
+            correlation_id=result.request_id,
         )
 
         try:
@@ -70,6 +71,7 @@ class ReportWriter:
             sheet_id,
             "--data",
             row_data,
+            correlation_id=result.request_id,
         )
         logger.info("Metrics appended to sheet", sheet_id=sheet_id)
 
@@ -91,26 +93,37 @@ class ReportWriter:
             )
         return "\n".join(lines)
 
-    async def _run_gwscli(self, *args: str, timeout: float = 30.0) -> str:
+    async def _run_gwscli(self, *args: str, timeout: float = 30.0, correlation_id: str | None = None) -> str:
         """Run gwscli command asynchronously with timeout and robust error handling."""
         try:
             # Note: Static analysis requires literal string here for security
             proc = await asyncio.create_subprocess_exec("gwscli", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)  # nosec B603 # nosemgrep # noqa: E501
         except FileNotFoundError as exc:
-            logger.error("gwscli not found", error=str(exc))
+            logger.error("gwscli not found", error=str(exc), correlation_id=correlation_id)
             raise RuntimeError("gwscli is not installed or not in PATH") from exc
 
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
-            stdout, stderr = await proc.communicate()
-            logger.error("gwscli timed out", timeout=timeout, stdout=stdout.decode(), stderr=stderr.decode())
+            await proc.communicate()  # Clean up process
+            logger.error(
+                "gwscli timed out",
+                timeout=timeout,
+                stdout="***",
+                stderr="***",
+                correlation_id=correlation_id,
+            )
             raise TimeoutError(f"gwscli timed out after {timeout}s") from None
 
         if proc.returncode != 0:
             err_msg = stderr.decode()
-            logger.error("gwscli failed", exit_code=proc.returncode, stderr=err_msg)
-            raise RuntimeError(f"gwscli failed (exit {proc.returncode}): {err_msg}")
+            logger.error(
+                "gwscli failed",
+                exit_code=proc.returncode,
+                stderr="***",
+                correlation_id=correlation_id,
+            )
+            raise RuntimeError(f"gwscli failed (exit {proc.returncode})")
 
         return stdout.decode()

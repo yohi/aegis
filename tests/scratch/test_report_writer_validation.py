@@ -1,5 +1,7 @@
 import pytest
+
 from plugins.sync.report_writer import ReportWriter
+
 
 def test_validate_arg():
     writer = ReportWriter()
