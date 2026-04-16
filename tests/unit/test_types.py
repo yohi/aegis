@@ -5,13 +5,10 @@ from __future__ import annotations
 import pytest
 
 from core.types import (
-    ReviewRequest,
-    ReviewResult,
     ReviewSystemError,
     SecurityBlockedError,
     ShieldFinding,
     ShieldResult,
-    SourceInfo,
     SyncError,
     SyncResult,
     AgentTimeoutError,

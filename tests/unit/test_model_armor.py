@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 import pytest
 
-from core.types import ShieldResult
 from core.protocols import SecurityShield
 
 
