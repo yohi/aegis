@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
-from core.types import ShieldFinding, ShieldResult
+from core.types import ShieldResult
 from core.protocols import SecurityShield
 
 

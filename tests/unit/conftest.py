@@ -18,7 +18,7 @@ class FakeDriveClient:
 
     def __init__(self) -> None:
         self.uploaded_files: list[tuple[Path, str]] = []
-        self.synced_notebooks: list[tuple[str, list[str]] = []
+        self.synced_notebooks: list[tuple[str, list[str]]] = []
 
     async def upload_source(self, file_path: Path, folder_id: str) -> str:
         self.uploaded_files.append((file_path, folder_id))
