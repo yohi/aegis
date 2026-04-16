@@ -27,6 +27,8 @@
 Plugin-based microkernel architecture with Protocol-first design.
 All plugins implement `core/protocols.py` Protocols — no concrete class dependencies.
 
+For detailed system specifications, communication protocols, and security designs, please see **[SPEC.md](SPEC.md)**.
+
 ## Quick Start
 
 1. Open in DevContainer (VS Code / Cursor)

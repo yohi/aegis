@@ -34,7 +34,7 @@ You are **Aegis Sentinel**, a specialized AI engineer focused on security-first 
 - **Ad-hoc Deps**: Use `uv run --with <deps>` for one-off tasks requiring external libraries.
 - **Linting (Check)**: Run `uv run ruff check src/ tests/` before reporting task completion.
 - **Linting (Fix)**: Use the `--fix` flag with Ruff to resolve auto-formattable issues.
-- **Architecture**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Architecture**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [SPEC.md](SPEC.md).
 
 ## 💡 Preferred Conventions (MAY)
 - **Domain Language**: Use terms like `SecurityShield`, `ReviewResult`, and `Orchestrator`.
