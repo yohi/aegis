@@ -23,9 +23,10 @@ class Orchestrator:
     """Coordinates the full review pipeline."""
 
 
-    def __init__(self, shield: SecurityShield) -> None:
+    def __init__(self, shield: SecurityShield, repo_path: Path) -> None:
         self._io_semaphore = Semaphore(10)
         self.shield = shield
+        self.repo_path = repo_path
 
     async def _read_file(self, file: Path) -> tuple[Path, str]:
         """Read a file asynchronously without blocking the event loop."""
@@ -40,7 +41,17 @@ class Orchestrator:
 
     async def run_review(self, request: ReviewRequest) -> ReviewResult:
         """Execute the full review pipeline."""
-        file_contents = await asyncio.gather(*(self._read_file(f) for f in request.target_files))
+        sanitized_files = []
+        repo_root = self.repo_path.resolve()
+        for f in request.target_files:
+            # Resolve path against repo_path and verify it's a descendant
+            resolved_path = (self.repo_path / f).resolve()
+            if repo_root not in resolved_path.parents and resolved_path != repo_root:
+                logger.warning("security_path_traversal_blocked", path=str(f))
+                continue
+            sanitized_files.append(resolved_path)
+
+        file_contents = await asyncio.gather(*(self._read_file(f) for f in sanitized_files))
 
         for file, content in file_contents:
             result = await self.shield.shield_input(content)
@@ -52,7 +63,7 @@ class Orchestrator:
         review_output = ReviewResult(
             request_id=request.request_id,
             status="completed",
-            findings=[],
+            findings=(),
             summary="Review completed successfully.",
         )
 
