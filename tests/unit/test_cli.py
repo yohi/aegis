@@ -139,6 +139,45 @@ class TestCLIReview:
             call_args = mock_orch.run_review.call_args[0][0]
             assert len(call_args.target_files) == 2
 
+    def test_review_invalid_params(self, runner: CliRunner, tmp_path: Path) -> None:
+        # Create a dummy repo
+        repo_path = tmp_path / "repo-invalid"
+        repo_path.mkdir()
+
+        # Test max_files < 0
+        result = runner.invoke(
+            app,
+            [
+                "review",
+                str(repo_path),
+                "--notebook-id",
+                "test",
+                "--project-id",
+                "test",
+                "--max-files",
+                "-1",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "max_files must be non-negative" in result.output
+
+        # Test max_concurrent_shields < 1
+        result = runner.invoke(
+            app,
+            [
+                "review",
+                str(repo_path),
+                "--notebook-id",
+                "test",
+                "--project-id",
+                "test",
+                "--max-concurrent-shields",
+                "0",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "max_concurrent_shields must be at least 1" in result.output
+
 
 class TestCLIGenerateRules:
     """Test CLI generate-rules command."""
@@ -219,3 +258,22 @@ sections:
         )
         assert result.exit_code == 2
         assert "must be a JSON object (dict)" in result.output
+
+    def test_generate_rules_side_effect_prevented(self, runner: CliRunner, tmp_path: Path) -> None:
+        template_dir = tmp_path / "templates"
+        template_dir.mkdir()
+        output_dir = tmp_path / "nonexistent_output"
+
+        # Valid JSON but not a dict, should NOT create output_dir
+        result = runner.invoke(
+            app,
+            [
+                "generate-rules",
+                str(template_dir),
+                str(output_dir),
+                "--glob-overrides",
+                "[]",
+            ],
+        )
+        assert result.exit_code == 2
+        assert not output_dir.exists()

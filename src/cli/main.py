@@ -39,6 +39,13 @@ def review(
     from plugins.security.model_armor import ModelArmorClient
 
     async def _run() -> None:
+        if max_files < 0:
+            raise typer.BadParameter(f"max_files must be non-negative: got {max_files}")
+        if max_concurrent_shields < 1:
+            raise typer.BadParameter(
+                f"max_concurrent_shields must be at least 1: got {max_concurrent_shields}"
+            )
+
         logger.info("review_started", repo_path=str(repo_path))
         armor_client = ModelArmorClient(project_id=project_id)
         try:
@@ -99,7 +106,6 @@ def generate_rules(
 
     from plugins.rules.generator import RuleGenerator
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     overrides: dict[str, object] | None = None
     if glob_overrides.strip():
         try:
@@ -111,6 +117,7 @@ def generate_rules(
         except json.JSONDecodeError as e:
             raise typer.BadParameter(f"Invalid JSON for glob_overrides: {e}") from e
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     gen = RuleGenerator(template_dir)
     generated = gen.generate(output_dir, overrides=overrides)
     for path in generated:
