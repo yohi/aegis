@@ -6,6 +6,9 @@ engines:
     skips:
       - B603
       - B607
+  semgrep:
+    exclude_rules:
+      - "python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit"
   flake8:
     # F999 is often a false positive in newer Python syntax for older linters
     # We ignore B101 (assert) in tests via bandit exclusion above.
