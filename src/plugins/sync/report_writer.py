@@ -109,19 +109,25 @@ class ReportWriter:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
             proc.kill()
-            await proc.communicate()  # Clean up process
+            # Clean up process and capture what was written to pipes before kill
+            stdout, stderr = await proc.communicate()
+            err_summary = stderr.decode()[:200] + "..." if stderr else "N/A"
             logger.error(
                 "gws timed out",
                 timeout=timeout,
                 correlation_id=correlation_id,
+                stderr_summary=err_summary,
             )
             raise TimeoutError(f"gws timed out after {timeout}s") from None
 
         if proc.returncode != 0:
+            # Decode and truncate stderr for safe diagnostic logging
+            err_summary = stderr.decode()[:200] + "..." if stderr else "N/A"
             logger.error(
                 "gws failed",
                 exit_code=proc.returncode,
                 correlation_id=correlation_id,
+                stderr_summary=err_summary,
             )
             raise RuntimeError(f"gws failed (exit {proc.returncode})")
 
