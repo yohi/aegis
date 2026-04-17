@@ -384,7 +384,10 @@ class LLMProviderConfig(BaseSettings):
 ```python
 # src/v2/core/hierarchy.py
 class AuthorityLevel(StrEnum):
-    ABSOLUTE   = "absolute"     # NotebookLM — 他と矛盾したら必ず勝つ
+    ABSOLUTE   = "absolute"     # NotebookLM — ドメイン知識軸で他ソースに優越。
+                                # ただし SECURITY_GUARD の high/critical 指摘は
+                                # 自動上書きせず、§5.3 裁定ルール 1 により
+                                # 強制 escalate される（セキュリティ軸は直交）
     PRIMARY    = "primary"      # Target code / Target docs
     REFERENCE  = "reference"    # Google Docs / PDF / 他関連文書
     CONVENTION = "convention"   # エージェントの事前知識
@@ -793,10 +796,10 @@ class DocumentIngestor(Protocol):
 
 | コマンド | 機能 |
 |---|---|
-| `aegis review-v2 --target <paths> [--kind document|source_code|mixed]` | 新規レビュー開始 |
+| `aegis review-v2 --target <paths> [--kind document\|source_code\|mixed]` | 新規レビュー開始 |
 | `aegis review-v2 --resume <request_id>` | チェックポイントから再開（Automation） |
 | `aegis review-v2 --dry-run` | LLM 呼出しなし。graph 構造のみ検証 |
-| `aegis review-v2 --mode interactive|automation|auto` | 経路選択（既定 auto） |
+| `aegis review-v2 --mode interactive\|automation\|auto` | 経路選択（既定 auto） |
 | `aegis ask <request_id> <finding_id> --question "..."` | Q&A 追問 |
 | `aegis approve <request_id> --approver <name> [--comment "..."]` | 最終承認 |
 | `aegis report show <request_id>` | 過去レポート表示 |
@@ -1112,7 +1115,7 @@ uv run pytest -m "not integration"
 
 - **Aegis Sentinel**: Orchestrator ペルソナ。複数ペルソナの調停と最終レポート生成を担う
 - **correlation_id**: gws CLI およびクロスシステム呼出しのトレーシング ID。原則は `request_id` をそのまま流用する（1 レビュー = 1 correlation_id）。外部システム起点で別値を受信する将来拡張を許容するため、型上は独立フィールド
-- **ABSOLUTE TRUTH**: NotebookLM 由来の情報。他と矛盾したら必ず勝つ
+- **ABSOLUTE TRUTH**: NotebookLM 由来の情報。ドメイン知識軸で他ソース（PRIMARY / REFERENCE / CONVENTION）と矛盾した場合に優越する。ただしセキュリティ軸は直交しており、`SECURITY_GUARD` の high/critical 指摘を ABSOLUTE が自動上書きすることは禁止（§5.3 裁定ルール 1 により強制 escalate）
 - **PRIMARY**: レビュー対象そのもの（コード／ドキュメント）
 - **REFERENCE**: 関連文書（参考情報、絶対正ではない）
 - **CONVENTION**: LLM の事前知識（明示情報が無いときのみ採用）
