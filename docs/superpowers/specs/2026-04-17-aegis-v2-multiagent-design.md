@@ -21,7 +21,7 @@
 
 ### 0.2 運用フロー（User Journey: 11 ステップ）
 
-```
+```text
  1. レビュー対象の分類入力 (DOCUMENT / SOURCE_CODE / MIXED)
  2. レビュー依頼票のアップロード (任意)         ┐
  3. レビュー対象ドキュメント／コードのアップロード │
@@ -52,7 +52,7 @@
 
 ### 1.1 ハイブリッド 2 経路構成
 
-```
+```text
                  ┌── 共有資産 (Single Source of Truth) ───────────────┐
                  │ prompts/*.xml  report/renderer  information_hierarchy │
                  │ enums / types (FindingV2, PriorReviewComment, ...)    │
@@ -151,19 +151,32 @@ class ReviewTargetKind(StrEnum):
 
 ```python
 # src/v2/automation/graph/state.py
+def _merge_agent_reports(
+    a: Mapping[AgentPersona, AgentReport],
+    b: Mapping[AgentPersona, AgentReport],
+) -> dict[AgentPersona, AgentReport]:
+    """fan_out で並列に到着する persona 別 report をマージ（同一 persona の二重到着は後着を優先）."""
+    return {**a, **b}
+
+def _extend_list[T](a: Sequence[T], b: Sequence[T]) -> list[T]:
+    """Conflict / Resolution / AgentFailure のノード間追記用 reducer."""
+    return [*a, *b]
+
 class SentinelState(TypedDict):
-    request: ReviewRequestV2                     # §6.2 で定義（v1 ReviewRequest とは別型）
-    correlation_id: str                          # gws 全呼出しで必須、request_id と 1:1
-    ingested: Sequence[IngestedDocument]         # ingest 層が正規化した全入力
-    prior_form: ReviewRequestForm | None         # レビュー依頼票（任意）
-    notebook_context: NotebookContext            # DOMAIN 用・絶対正データ
-    focus_hints: Sequence[str]                   # 利用者が指定した注目領域
-    agent_reports: dict[AgentPersona, AgentReport]
-    conflicts: list[Conflict]
-    resolutions: list[Resolution]
-    final_report: ReviewReportV2 | None
-    failures: list[AgentFailure]
+    # correlation_id は request.correlation_id を Single Source として参照し、State には重複させない。
+    request:          ReviewRequestV2                  # §6.2 で定義（v1 ReviewRequest とは別型）
+    ingested:         Sequence[IngestedDocument]      # ingest 層が正規化した全入力
+    prior_form:       ReviewRequestForm | None        # レビュー依頼票（任意）
+    notebook_context: NotebookContext                 # DOMAIN 用・絶対正データ
+    focus_hints:      Sequence[str]                   # 利用者が指定した注目領域
+    agent_reports:    Annotated[dict[AgentPersona, AgentReport], _merge_agent_reports]
+    conflicts:        Annotated[list[Conflict], _extend_list]
+    resolutions:      Annotated[list[Resolution], _extend_list]
+    failures:         Annotated[list[AgentFailure], _extend_list]
+    final_report:     ReviewReportV2 | None           # compose_report ノードが一度だけ書く
 ```
+
+**Reducer 設計意図**: `fan_out_agents` で 4 persona が並列に `agent_reports` / `failures` に書き込むため、LangGraph の `Annotated[..., reducer]` で冪等なマージを強制する。`final_report` は単一ノード（`compose_report`）のみが上書きするため reducer 不要。`correlation_id` は `state.request.correlation_id` 経由で参照し、State には重複フィールドを置かない（整合性不整合の芽を断つ）。
 
 参照型の所在：
 - `ReviewRequestV2`, `IngestedDocument`, `ReviewRequestForm`, `Conflict`, `Resolution` → §6.2 / §6.3 / §5.2 で定義
@@ -173,7 +186,7 @@ class SentinelState(TypedDict):
 
 ### 3.2 ノード構成
 
-```
+```text
 START
   ▼
 (1) prepare_context            ingest 全入力、prior_form 正規化、NotebookLM
@@ -276,7 +289,7 @@ class LLMProvider(Protocol):
 
 | 機能 | AnthropicProvider | OpenAIProvider | 未サポート時の扱い |
 |---|---|---|---|
-| 基本呼出し | `messages.create` (claude-opus-4-7) | `responses.create` / `chat.completions` | — |
+| 基本呼出し | `messages.create` (claude-opus-4-7) | `responses.create` を **第一選択**、未対応 SDK / モデル時のみ `chat.completions` にフォールバック | — |
 | `ReasoningConfig.mode=adaptive` | `thinking={"type":"adaptive"}` | `reasoning={"effort":...}` にマップ | `supports()=False`、呼出しは成功、`structlog.info("provider_feature_unavailable", ...)` |
 | `ReasoningConfig.effort=xhigh` | `extra_body={"output_config":{"effort":"xhigh"}}` | `reasoning_effort="high"` にマップ | 既定値で続行 |
 | `CacheHint` | `cache_control: {"type":"ephemeral"}` を当該 block に付与 | OpenAI 自動キャッシュに委譲（no-op） | 無視。`usage.cache_*=0` |
@@ -312,6 +325,8 @@ class AgentExecutor:
 ```
 
 Anthropic 固有パラメータ（`thinking`、`output_config.effort`、`cache_control`）は **アダプタ内でのみ** 扱う。エージェント実装・レポート・プロンプト資産からは見えない。
+
+**Shield ブロック時のメタデータ保全**: `shield_input` / `shield_output` が `allowed=False` を返した際、`sanitized_content` は `[REDACTED]` に置換されるが、`ShieldFinding.category` / `severity` / `span_start` / `span_end` と呼出し文脈（persona、request_id、correlation_id、対象 `Location`）は **全て保持** する。`AgentExecutor` はこれらを `structlog.error("security_blocked", ...)` に記録し、`SecurityBlockedError` に `finding_metadata: Sequence[ShieldFinding]` を詰めて上位に伝搬させる。Sentinel はブロックされた対象を `ReviewReportV2.findings` に `comment_type=ISSUE` / `bug_phenomenon=CODING_MISS`（secrets の場合）として取り込み、レポート §3 にカテゴリと重大度を明示する。`[REDACTED]` 化されるのは本文のみであり、監査経路は完全追跡可能。
 
 ### 4.4 プロンプト資産（Provider-Neutral）
 
@@ -392,10 +407,17 @@ class Conflict:
 }
 ```
 
-- `escalate`（Claude が判断できない）は `next_steps` に「ユーザー確認必要」として残す
-- `winning_persona == DOMAIN` かつ `authority_level_applied == ABSOLUTE` の場合、他ペルソナの反対意見は `superseded_by` メタで残しつつ非表示化（監査には全文保持）
+**裁定ルール（優先順位）**:
+
+1. **セキュリティ保護ルール（最上位・LLM 裁定より優先）**: 関与ペルソナに `SECURITY_GUARD` が含まれ、その `FindingV2.severity` が `high` または `critical` の場合、LLM の返す `decision` に関わらず Resolver 層で **強制的に `escalate` に昇格**する。`winning_persona=None`、`authority_level_applied=None` とし、`next_steps` に「セキュリティ重大指摘のため人間確認必須」を追記する。ABSOLUTE（NotebookLM）による自動上書きは **禁止**。根拠：NotebookLM は業務仕様の絶対正であって、セキュリティ上の妥当性を判定する権威ではない（§5.1 の権威軸はドメイン知識軸であり、セキュリティ軸と直交する）。
+2. **DOMAIN/ABSOLUTE による裁定**: 上記 1 に該当しない場合のみ、`winning_persona == DOMAIN` かつ `authority_level_applied == ABSOLUTE` であれば、他ペルソナの反対意見は `superseded_by` メタで残しつつ非表示化（監査には全文保持）。
+3. **NotebookLM 内部矛盾**: `DOMAIN` の FindingV2 が複数の ABSOLUTE 抜粋に依拠しており互いに矛盾する場合（§7.5 E7 / E14 参照）、LLM 出力に関わらず Resolver 層で `decision=escalate` に固定し、`next_steps` に「NotebookLM 内部矛盾の発注元確認」を追記。
+4. **一般ケース**: 上記いずれにも該当しない場合は LLM の JSON 応答（`uphold` / `override` / `merge` / `escalate`）をそのまま採用。`escalate`（Claude が判断できない）は `next_steps` に「ユーザー確認必要」として残す。
+
+**永続化と監査**:
+
 - 裁定結果は `.review/conflicts/<conflict_id>.json` に atomic write
-- `structlog.info("conflict_resolved", conflict_id, decision, winning_persona, authority_level_applied, request_id, correlation_id, actor="sentinel")`
+- `structlog.info("conflict_resolved", conflict_id, decision, winning_persona, authority_level_applied, forced_by_rule=<rule_number|null>, request_id, correlation_id, actor="sentinel")`（上記ルール 1–3 によるオーバーライド時は `forced_by_rule` で明示）
 
 ---
 
@@ -486,8 +508,12 @@ class ReviewRequestForm:
 
 @dataclass(frozen=True)
 class ReviewRequestV2:                        # v1 ReviewRequest (src/core/types.py) とは別型
-    request_id:    str
-    correlation_id: str
+    request_id:     str                       # システム内部 ID（uuid4）
+    correlation_id: str                       # gws / クロスシステム呼出し用トレース ID
+                                              # 原則 request_id と同値（request_id をそのまま流用）。
+                                              # 1 レビュー = 1 correlation_id。
+                                              # 文字列等価性は __post_init__ で検証しない（将来外部システム起点で
+                                              # correlation_id を受信する可能性があるため、別値を許容する）。
     kind:          ReviewTargetKind
     target_docs:   Sequence[IngestedDocument]       # 主対象（AuthorityLevel.PRIMARY）
     reference_docs:Sequence[IngestedDocument] = ()  # REFERENCE
@@ -755,7 +781,7 @@ class DocumentIngestor(Protocol):
 
 ### 7.2 ディレクトリ構成（最終形）
 
-```
+```text
 src/
 ├── core/                         # v1: 不変
 │   ├── protocols.py              # ← ReviewAgent / ConflictResolver /
@@ -878,7 +904,7 @@ cursor-extension/                 # Cursor 拡張（TypeScript、UI のみ）
 | `TaskDispatcher` | 全通信 | 監査 artifact 書込みのみ | atomic write を流用 |
 | `ModelArmorMiddleware` | shield_input/output | 同じ | `AgentExecutor` が DI で受け取り、全 LLM 呼出しに強制適用 |
 | `RetryConfig` | google API エラー | + LLM provider エラー | `retryable_exceptions` に `anthropic.RateLimitError` / `anthropic.APITimeoutError` / `openai.RateLimitError` 等を追加 |
-| `report_writer.py` | gws 呼出し | 同じ | `correlation_id` を必須引数化（型で強制） |
+| `report_writer.py` | gws 呼出し | 同じ | **後方互換維持**: 既存 `write_report(...)` シグネチャの `correlation_id` は `str \| None = None`（既定は `None`）。v1 既存呼出し側（`src/plugins/sync/`）のコード変更を不要にする。`None` の場合はログ警告を 1 回出し、内部で uuid4 を自動採番。v2 経路（`src/v2/report/publisher.py`）は常に明示渡し。将来 deprecation path は `docs/v2/migration-notes.md` に記載 |
 | CLI | `llm-review` | + `aegis` | `[project.scripts]` に `aegis = "cli.main:app"` を追加、旧 `llm-review` はエイリアス温存 |
 | `src/core/protocols.py` | `ReviewPlugin` / `SecurityShield` | 既存不変、4 protocol 追記 | 後方互換完全維持 |
 | `src/core/types.py` | 既存型群 | 一切変更しない | v2 新規型は `src/v2/core/types.py` へ |
@@ -886,15 +912,16 @@ cursor-extension/                 # Cursor 拡張（TypeScript、UI のみ）
 **依存関係追加**（`pyproject.toml`）:
 - 必須: `langgraph>=0.2`, `langchain-core>=0.3`, `python-docx`, `openpyxl`, `python-pptx`, `pypdf`, `mcp>=0.9`（FastMCP）
 - Optional extras:
-  - `provider-anthropic`: `anthropic>=0.40`
-  - `provider-openai`: `openai>=1.50`
+  - `provider-anthropic`: `anthropic>=0.40,<1.0`
+  - `provider-openai`: `openai>=1.50,<2.0`
 - 既定で `provider-anthropic` を dev extra に含める
+- 上限を固定する理由：§7.6 #1 の `feature_probe` が Anthropic SDK の `extra_body` / `output_config` 受容仕様に依存しており、メジャーバージョンアップ時は dev で手動検証後のみ反映する運用とする
 
 ### 7.4 Q&A ループ（ステップ10）の実装詳細
 
 **目的**: レビュー依頼者の心理的負担軽減。finding の根拠を即座に問い返せる。
 
-```
+```text
 Report 生成後
   │
   │ ユーザーが finding_id を指定して質問
@@ -956,7 +983,7 @@ uv run pytest -m "not integration"
 |---|---|---|---|
 | E1 | 巨大ファイル | `target_docs` に 500KB 超の単一ソースコード（`SyncConfig.max_file_size_kb=500` 境界） | `ingest/adapters/source_code.py` が `FileSizeExceededError` を `AgentFailure` として state に積む。他エージェントは継続。最終レポート §3 に「対象超過により未レビュー」を明記 |
 | E2 | 巨大ファイル | 20MB の PDF | pdf アダプタがページ単位ストリーム抽出に切替。`metadata.truncated=True` を付与、`structlog.warning("ingest_truncated", pages_processed=N, total_pages=M)` |
-| E3 | 巨大ファイル | 1,000 ファイルの一括投入 | `LLM_PROVIDER_MAX_CONCURRENT=4` を超えないこと、TaskGroup で全ファイル処理完了、`state.failures == []` |
+| E3 | 巨大ファイル | 1,000 ファイルの一括投入（**前提**: 各ファイルが `max_file_size_kb=500` 以下、binary でない、`src/plugins/sync/pre_filter.py` 通過済み） | `LLM_PROVIDER_MAX_CONCURRENT=4` を超えないこと、TaskGroup で全ファイル処理完了、`state.failures == []`。E1 との境界：単一 500KB 超は E1、1,000 × 小ファイルは E3 |
 | E4 | サポート外フォーマット | `.rar` / `.exe` / `.zip` など `ingest/registry.py` 未登録の拡張子 | `UnsupportedFormatError` を投げ、レビュー全体は継続。当該ファイルは `ingested` から除外し、レポート §3 に「サポート外フォーマットにつきスキップ」を列挙 |
 | E5 | サポート外フォーマット | MIME 不明のバイナリ（`application/octet-stream`） | `ingest/resolver.py` が `FileTypeDetectionError` を返し、ユーザーに明示フォーマット指定を要求（CLI `--format` / UI プルダウン） |
 | E6 | NotebookLM との完全矛盾 | 対象コードが `if authenticated:` で分岐／NotebookLM が「認証前に権限チェック必須」と明記 | DOMAIN が `severity=high`, `authority_level=ABSOLUTE` で FindingV2 を生成。他ペルソナの反対意見は `detect_conflicts` で `domain_contradiction` として検出、`SentinelResolver` が `decision=override`, `winning_persona=DOMAIN`, `authority_level_applied=ABSOLUTE` を出力 |
@@ -966,7 +993,8 @@ uv run pytest -m "not integration"
 | E10 | 循環参照 | 関連文書 A が B を参照、B が A を参照 | `ingest/resolver.py` が訪問済みセットで検知、2 回目の参照を無視、`structlog.info("ingest_cycle_skipped", doc_id=...)` |
 | E11 | Shield ブロック | user が意図的に「APIキーっぽい文字列」を含むコードを投入 | `shield_input` が `ShieldResult.allowed=False` を返し `SecurityBlockedError`。対象ファイルのみブロック、他ファイルのレビューは継続。レポート §3 に「セキュリティシールド遮断」を明示 |
 | E12 | 過去指摘との重複 | `prior_form` に同一箇所の既解決コメントあり／新規エージェントが類似 Finding を生成 | `FindingV2.relates_to_prior` に PriorReviewComment の識別子を自動紐付け。非機能要件「重複率 ≤ 5%」を満たすこと |
-| E13 | Provider feature 欠落 | OpenAI provider で `CacheHint` と `ReasoningConfig.mode="adaptive"` を同時指定 | 例外を投げず、`supports()=False` で silently degrade。`structlog.info("provider_feature_unavailable", feature=..., fallback=...)` を各機能ごとに 1 件記録。最終 FindingV2 集合は Anthropic 実行時と Jaccard ≥ 0.85 |
+| E13 | Provider feature 欠落 | OpenAI provider で `CacheHint` と `ReasoningConfig.mode="adaptive"` を同時指定 | 例外を投げず、`supports()=False` で silently degrade。`structlog.info("provider_feature_unavailable", feature=..., fallback=...)` を各機能ごとに 1 件記録。最終 FindingV2 集合は Anthropic 実行時と Jaccard ≥ 0.85（**比較キー**: `(location.doc_id, location.file_path, location.line, bug_phenomenon, severity)` の 5-tuple。`finding_id` / `details` / `recommendation` は LLM 揺らぎにより除外。§7.5 非機能要件テスト参照） |
+| E14 | NotebookLM 内部矛盾 | 1 レビューセッションで DOMAIN が同一論点について 2 件以上の ABSOLUTE 抜粋を参照し、互いに相反する記述が検出された（§5.3 ルール 3 の起動条件） | DOMAIN エージェントが `FindingV2.comment_type=QUESTION`, `bug_phenomenon=DESIGN_EXPRESSION`, `authority_level=ABSOLUTE` で矛盾を明示。`detect_conflicts` が `domain_contradiction` として捕捉、`SentinelResolver` がルール 3 により LLM 出力に関わらず `decision=escalate` に固定、`next_steps` へ「NotebookLM §A と §B の優先順位を発注元に確認」を追記。関連 `SourceExcerpt` 2 件以上はレポート §3 に citation 付きで併記 |
 
 **非機能要件テスト**（主目的の指標化）:
 
@@ -974,7 +1002,7 @@ uv run pytest -m "not integration"
 |---|---|---|
 | Q&A ラウンドトリップ p50 レイテンシ | ≤ 15s | Integration テストで 20 回計測 |
 | 過去指摘との重複率 | ≤ 5% | `prior_form` 付きベンチマークで `relates_to_prior` 重複検出 |
-| Provider 切替後の finding 数同等性 | ±10% 以内 | 同一入力で Anthropic / OpenAI 実行し finding 集合の Jaccard ≥ 0.85 |
+| Provider 切替後の finding 数同等性 | ±10% 以内 | 同一入力で Anthropic / OpenAI 実行し finding 集合の Jaccard ≥ 0.85（比較キー: `(location.doc_id, location.file_path, location.line, bug_phenomenon, severity)`） |
 | レビュー全体スループット | 対象 1 kLOC あたり ≤ 3 分 | E2E ベンチマーク |
 
 **観測可能性**:
@@ -992,7 +1020,8 @@ uv run pytest -m "not integration"
 各課題について、実装計画で確定させるべき調査事項と、未解決のまま本番運用に入った場合の **実行時フォールバック** を併記する。
 
 1. **Claude Opus 4.7 の `output_config.effort` パラメータ**: 公式 SDK が正式対応前の場合 `extra_body` 経由で送信する必要があり、API 側が拒否するリスクがある。
-   - **回避策**: `AnthropicProvider.__init__` 時に `feature_probe()` を 1 回実行し、`extra_body={"output_config":{"effort":"xhigh"}}` を含めたダミー 1 トークン呼出しを投げる。`BadRequestError` で失敗した場合は当該 provider インスタンスの `_supports_effort=False` を立て、以降の呼出しでは `extra_body` を **含めずに** `reasoning` を送る。結果は `structlog.warning("provider_feature_probe_failed", feature="reasoning_effort", fallback="default")` で記録し、`provider.supports(ProviderFeature.REASONING_EFFORT)` が `False` を返すようになる。
+   - **回避策**: `AnthropicProvider.__init__` 時に **アダプタ内部の private メソッド** `_feature_probe()` を 1 回実行し、`extra_body={"output_config":{"effort":"xhigh"}}` を含めたダミー 1 トークン呼出しを投げる。`BadRequestError` で失敗した場合は当該 provider インスタンスの `_supports_effort=False` を立て、以降の呼出しでは `extra_body` を **含めずに** `reasoning` を送る。結果は `structlog.warning("provider_feature_probe_failed", feature="reasoning_effort", fallback="default")` で記録し、`provider.supports(ProviderFeature.REASONING_EFFORT)` が `False` を返すようになる。
+   - **Protocol との関係**: `_feature_probe()` は `LLMProvider` protocol のメンバーでは **ない**（`supports()` のみが公開 API）。各アダプタが必要に応じて起動時に自律的に実行し、結果を `supports()` の返値として外部に表出させる。テスト時は依存性注入で `MockProvider` を使い、probe 不要の経路を確保する。
    - **SDK ピン留め**: `pyproject.toml` で `anthropic>=0.40,<1.0` に固定し、`uv.lock` で再現性を担保。マイナー更新は dev で手動検証後のみ反映。
 
 2. **LangGraph `Send` 並列と LLM rate limit の干渉**: 並列起動した 4–5 ペルソナが同時に provider を叩き、`RateLimitError` を誘発する可能性。
@@ -1046,7 +1075,7 @@ uv run pytest -m "not integration"
 ## 付録 B: 用語定義
 
 - **Aegis Sentinel**: Orchestrator ペルソナ。複数ペルソナの調停と最終レポート生成を担う
-- **correlation_id**: gws CLI およびクロスシステム呼出しのトレーシング ID。`request_id` と 1:1 対応
+- **correlation_id**: gws CLI およびクロスシステム呼出しのトレーシング ID。原則は `request_id` をそのまま流用する（1 レビュー = 1 correlation_id）。外部システム起点で別値を受信する将来拡張を許容するため、型上は独立フィールド
 - **ABSOLUTE TRUTH**: NotebookLM 由来の情報。他と矛盾したら必ず勝つ
 - **PRIMARY**: レビュー対象そのもの（コード／ドキュメント）
 - **REFERENCE**: 関連文書（参考情報、絶対正ではない）
