@@ -8,7 +8,7 @@ Aegis is an autonomous, multi-agent LLM code review system powered by NotebookLM
 - **Security Middleware**: Integrates Google Cloud Model Armor to shield all interactions. It prevents prompt injection and PII leaks on input (`shield_input`), and redacts sensitive data from LLM responses on output (`shield_output`).
 - **Asynchronous Execution**: Deeply utilizes Python's `asyncio`. Blocking I/O is offloaded via `asyncio.to_thread`, and parallel tasks (like file shielding) are robustly managed with `asyncio.TaskGroup` and semaphores.
 
-## 3. Sync Pipeline (NotebookLM + Google Drive + gwscli)
+## 3. Sync Pipeline (NotebookLM + Google Drive + gws)
 - Creates a Single Source of Truth (SSOT) by synchronizing the local codebase to NotebookLM.
 - **DriveClient**: Uploads source code to Google Drive and links those files into the target NotebookLM.
 - **ReportWriter**: Asynchronously shells out to `gws` (Google Workspace CLI) to write human-readable review reports to Google Docs and operational metrics to Google Sheets.

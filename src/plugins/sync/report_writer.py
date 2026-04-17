@@ -42,15 +42,18 @@ class ReportWriter:
         try:
             parsed = json.loads(stdout)
         except json.JSONDecodeError as exc:
-            logger.error("Failed to parse gws output", output=stdout, error=str(exc))
+            # Sanitize output before logging to prevent leaking sensitive data
+            sanitized = stdout[:100] + "..." if len(stdout) > 100 else stdout
+            logger.error("Failed to parse gws output", output_summary=sanitized, error=str(exc), correlation_id=result.request_id)
             raise RuntimeError(f"Invalid JSON from gws: {exc}") from exc
 
         doc_id = parsed.get("id")
         if not doc_id:
-            logger.error("gws output missing 'id'", output=stdout)
+            sanitized = stdout[:100] + "..." if len(stdout) > 100 else stdout
+            logger.error("gws output missing 'id'", output_summary=sanitized, correlation_id=result.request_id)
             raise ValueError("gws create failed: output missing 'id'")
 
-        logger.info("Report written to Google Docs", doc_id=doc_id)
+        logger.info("Report written to Google Docs", doc_id=doc_id, correlation_id=result.request_id)
         return str(doc_id)
 
     async def append_metrics_sheet(self, result: ReviewResult, sheet_id: str) -> None:
@@ -73,7 +76,7 @@ class ReportWriter:
             row_data,
             correlation_id=result.request_id,
         )
-        logger.info("Metrics appended to sheet", sheet_id=sheet_id)
+        logger.info("Metrics appended to sheet", sheet_id=sheet_id, correlation_id=result.request_id)
 
     def _format_report(self, result: ReviewResult) -> str:
         """Format ReviewResult as a human-readable report."""
@@ -93,8 +96,8 @@ class ReportWriter:
             )
         return "\n".join(lines)
 
-    async def _run_gws(self, *args: str, timeout: float = 30.0, correlation_id: str | None = None) -> str:
-        """Run gws command asynchronously with timeout and robust error handling."""
+    async def _run_gws(self, *args: str, correlation_id: str, timeout: float = 30.0) -> str:
+        """Run gws command asynchronously with mandatory correlation_id and timeout handling."""
         try:
             # Note: Static analysis requires literal string here for security
             proc = await asyncio.create_subprocess_exec("gws", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)  # nosec B603 # nosemgrep # noqa: E501
@@ -110,18 +113,14 @@ class ReportWriter:
             logger.error(
                 "gws timed out",
                 timeout=timeout,
-                stdout="***",
-                stderr="***",
                 correlation_id=correlation_id,
             )
             raise TimeoutError(f"gws timed out after {timeout}s") from None
 
         if proc.returncode != 0:
-            err_msg = stderr.decode()
             logger.error(
                 "gws failed",
                 exit_code=proc.returncode,
-                stderr="***",
                 correlation_id=correlation_id,
             )
             raise RuntimeError(f"gws failed (exit {proc.returncode})")
