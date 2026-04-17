@@ -87,7 +87,7 @@
 - **Protocol-first / Microkernel**: `src/core/protocols.py` は追記のみ（`ReviewPlugin` / `SecurityShield` は不変）。新プロトコル `ReviewAgent` / `ConflictResolver` / `InformationSource` / `DocumentIngestor` / `LLMProvider` を追加
 - **Composition over Inheritance**: 各ノード／エージェントは protocol 実装をコンポーズ。深い継承を避ける
 - **Everything auditable**: LangGraph 各ノード境界、Cursor sub-agent 終了時、MCP ツール呼出し時に `.review/artifacts/` へ atomic write
-- **SecurityShield は必須経路**: `AgentExecutor` を介さない LLM 呼出しを作らない。Cursor 経路でも MCP 側で shield 適用
+- **SecurityShield は境界で必須（Boundary-based Shielding）**: 入力側は `AgentExecutor.invoke` の冒頭で `shield_input` を必ず適用し、`AgentExecutor` を介さない LLM 呼出しを作らない。出力側の `shield_output` は **LLM 応答受領直後には適用しない**。代わりに下記 2 種の境界を通る際に必ず適用する — (a) **永続化境界**（`.review/checkpoints.sqlite` / `.review/artifacts/*.json` / `.review/conflicts/*.json` / `.review/qna/*` への全書込み）、(b) **公開境界**（`.review/report.md` / gws Docs / gws Sheets / Cursor UI）。メモリ上の `SentinelState` と `ConflictResolver` の裁定ロジックは **unredacted な full context** を扱い、裁定精度を担保する。Cursor 経路でも MCP サーバの書込み／公開ツール側で境界 shield を強制
 - **Provider-neutral**: LLM 固有パラメータ（Anthropic の `thinking`、OpenAI の `reasoning_effort` 等）はアダプタ内に封じ込め、エージェント／レポート側からは見えない
 - **Devcontainer 限定実行**: Python バックエンドは devcontainer 外から起動しない（Cursor プラグインからも devcontainer に接続）
 
@@ -193,30 +193,48 @@ START
                                フェッチ、shield_input、correlation_id 確定
   ▼
 (2) fan_out_agents             Send API で target_kind に応じたペルソナを並列起動
-  ├► (2a) security_guard      ┐
-  ├► (2b) architect           │ ReviewAgent.review() を呼ぶ共通実装
-  ├► (2c) domain              │ 1 エージェントの例外は failures に積む（継続）
-  └► (2d) performance         ┘
+  ├► (2a) security_guard      ┐ ReviewAgent.review() を呼ぶ共通実装
+  ├► (2b) architect           │ 1 エージェントの例外は failures に積む（継続）
+  ├► (2c) domain              │ 応答本文は unredacted のまま state.agent_reports へ
+  └► (2d) performance         ┘ （artifact 書込み時のみ境界 shield を噛ませる）
   ▼
 (3) detect_conflicts           同一箇所の severity 乖離 / DOMAIN 矛盾 /
                                security override conflict を抽出
+                               （unredacted な full context 上で実行）
   ▼
 (4) resolve_conflicts          SentinelResolver が <information_hierarchy>
                                literal 埋込で Provider 経由裁定
+                               （unredacted な findings.details / recommendation
+                                を基に判断、裁定品質を最大化）
   ▼
-(5) compose_report             ReviewReportV2 を構造化、shield_output 全文適用
+(5) compose_report             ReviewReportV2 を構造化。**公開境界 shield_output**
+                               をここで初めて適用（details / recommendation /
+                               executive_summary / qna 応答の全テキスト）
   ▼
 (6) persist_and_publish        .review/report.md + gws Docs/Sheets
                                correlation_id 強制、失敗時 stderr サマリー記録
+                               （(5) で shield 済みのテキストを書き出すのみ）
   ▼
 END → status: completed_pending_approval
 ```
+
+**shield 適用ポイント（境界ベース）の要約**:
+
+| 境界 | shield 適用箇所 | 対象データ |
+|---|---|---|
+| 入力 | `AgentExecutor.invoke` step 1 | `user_content` 全文 |
+| 永続化（状態） | SqliteSaver writer wrapper（§3.3） | SentinelState スナップショット |
+| 永続化（監査） | `.review/artifacts/*.json` / `.review/conflicts/*.json` / `.review/qna/*` 書込み前 | 全テキスト・details・recommendation |
+| 公開（レポート） | `compose_report` ノード（§3.2 (5)） | ReviewReportV2 本文 |
+| 公開（gws） | report renderer / publisher | Google Docs / Sheets へ渡す全文 |
+| メモリ内裁定 | 適用しない | 裁定品質担保のため unredacted |
 
 ### 3.3 チェックポイントと再実行
 
 - `SqliteSaver` を `.review/checkpoints.sqlite` に配置
 - `aegis review-v2 --resume <request_id>` で失敗ノード以降のみ再実行
 - 各ノード終了時に `.review/artifacts/<node>.json` を `TaskDispatcher._sync_atomic_write`（v1 流用）で永続化
+- **永続化境界 shield**: `SqliteSaver` / `.review/artifacts/` / `.review/conflicts/` / `.review/qna/` への全書込みは `ShieldedPersistenceWriter`（`src/v2/persistence/shielded_writer.py`、新規）を介する。同 writer は書込み直前に `ModelArmorMiddleware.shield_output` を必ず適用し、unredacted な検査対象文字列がディスクに到達しないことを保証する。`ConflictResolver` がメモリ上で扱う `SentinelState` は shield 前、チェックポイント／再実行から復元された state は shield 済み（`[REDACTED]` が含まれる）となるため、`--resume` で裁定品質が劣化する点を **既知のトレードオフ** として §7.5 のテストで明示する。
 
 ### 3.4 並列実行の制約
 
@@ -303,9 +321,13 @@ class LLMProvider(Protocol):
 ```python
 # src/v2/llm/executor.py
 class AgentExecutor:
+    """
+    入力側 shield のみを担う。出力側 shield は境界（§3.3 永続化 / §3.2 (5) 公開）
+    で適用する（§1.2 Boundary-based Shielding）。
+    """
     def __init__(self, provider: LLMProvider, shield: SecurityShield) -> None:
         self.provider = provider
-        self.shield   = shield
+        self.shield   = shield       # 入力側と境界側で再利用される同一インスタンス
 
     async def invoke(
         self,
@@ -317,16 +339,19 @@ class AgentExecutor:
         response_format: Literal["text","json"] = "text",
         max_tokens: int = 8_000,
     ) -> AgentResponse:
-        # 1) shield_input を user_content 全文に適用
+        # 1) shield_input を user_content 全文に適用（ブロック時は SecurityBlockedError）
         # 2) provider.complete(...)  ← provider 固有詳細は隠蔽
-        # 3) shield_output を応答本文に適用
+        # 3) 応答本文は **unredacted のまま AgentResponse として返す**
+        #    （shield_output は compose_report と ShieldedPersistenceWriter が担当）
         # 4) structlog: provider=self.provider.name, model=..., usage, cache hit,
         #               thinking_tokens, feature_fallbacks=[...]
 ```
 
 Anthropic 固有パラメータ（`thinking`、`output_config.effort`、`cache_control`）は **アダプタ内でのみ** 扱う。エージェント実装・レポート・プロンプト資産からは見えない。
 
-**Shield ブロック時のメタデータ保全**: `shield_input` / `shield_output` が `allowed=False` を返した際、`sanitized_content` は `[REDACTED]` に置換されるが、`ShieldFinding.category` / `severity` / `span_start` / `span_end` と呼出し文脈（persona、request_id、correlation_id、対象 `Location`）は **全て保持** する。`AgentExecutor` はこれらを `structlog.error("security_blocked", ...)` に記録し、`SecurityBlockedError` に `finding_metadata: Sequence[ShieldFinding]` を詰めて上位に伝搬させる。Sentinel はブロックされた対象を `ReviewReportV2.findings` に `comment_type=ISSUE` / `bug_phenomenon=CODING_MISS`（secrets の場合）として取り込み、レポート §3 にカテゴリと重大度を明示する。`[REDACTED]` 化されるのは本文のみであり、監査経路は完全追跡可能。
+**出力側 shield を AgentExecutor に置かない根拠**: 早期 redaction は `SentinelResolver` が矛盾を裁定する際に必要な生コンテキスト（変数名、ロジック断片、行内の識別子）を失わせ、裁定品質を損なう。`SentinelState` と resolver 入力はメモリ内で unredacted に保ち、ディスク接触・公開境界で確実に shield する方針（§1.2）とする。これは §7.5 契約テスト「ディスクに到達する全データが shield_output 済み」で enforce する。
+
+**Shield ブロック時（`allowed=False`）のメタデータ保全**: `shield_input` が `allowed=False` を返した際（出力側は境界でも同様）、`sanitized_content` は `[REDACTED]` に置換されるが、`ShieldFinding.category` / `severity` / `span_start` / `span_end` と呼出し文脈（persona、request_id、correlation_id、対象 `Location`）は **全て保持** する。`AgentExecutor` はこれらを `structlog.error("security_blocked", ...)` に記録し、`SecurityBlockedError` に `finding_metadata: Sequence[ShieldFinding]` を詰めて上位に伝搬させる。Sentinel はブロックされた対象を `ReviewReportV2.findings` に `comment_type=ISSUE` / `bug_phenomenon=CODING_MISS`（secrets の場合）として取り込み、レポート §3 にカテゴリと重大度を明示する。`[REDACTED]` 化されるのは本文のみであり、監査経路は完全追跡可能。
 
 ### 4.4 プロンプト資産（Provider-Neutral）
 
@@ -586,10 +611,11 @@ class Approval:
 - 要件の `<report_format>` を **literal に遵守**。見出し・箇条書き順序・日本語ラベルを一字一句維持
 - AI 的前置き（「Here is the report...」等）は禁止。テンプレートは f-string で固定、LLM 生成部分は `executive_summary` / 各 finding の `details` と `recommendation` のみ
 - Sentinel の LLM 呼出しで `executive_summary` と findings の散文説明を生成 → renderer がテンプレートに差し込み
+- **公開境界 shield**: renderer は入力の `ReviewReportV2` を受領した直後に `shield_output` を全テキストフィールド（`executive_summary` / `details` / `recommendation` / `qna_threads.*.content`）へ適用したうえでテンプレートに差し込む。`AgentExecutor` が redaction しなくなったため、この renderer と `ShieldedPersistenceWriter`（§3.3）が **shield_output の唯一の出力側適用点** となる。
 - 出力先：
-  1. `.review/report.md`（一次成果物）
-  2. Google Docs（`gws docs create --correlation-id=<id>`）
-  3. Google Sheets（findings をフラット化、`gws sheets append`）
+  1. `.review/report.md`（一次成果物・shield 済み）
+  2. Google Docs（`gws docs create --correlation-id=<id>`・shield 済み）
+  3. Google Sheets（findings をフラット化、`gws sheets append`・shield 済み）
 - 承認ステータスに応じて `[未承認]` / `[承認済み]` フッターを付与
 
 ### 6.5 エージェント基盤型（`src/v2/agents/base.py`）
@@ -865,6 +891,8 @@ src/
     ├── sources/                  # 共有
     │   ├── notebook.py
     │   └── gws_docs.py
+    ├── persistence/              # 永続化境界 shield（新規）
+    │   └── shielded_writer.py    # SqliteSaver / artifact / conflict / qna 書込み wrapper
     └── approval/
         └── recorder.py           # Approval 記録（human-only 遷移）
 
@@ -937,8 +965,10 @@ QnASession が以下を Sentinel(Provider 経由) に渡す:
   - <information_hierarchy> と <core_directives>
   │
   ▼
-応答を .review/qna/<finding_id>/<NNN>.md に atomic write
-shield_output を必ず適用
+応答は Q&A publisher で **公開境界 shield_output** を適用
+（Cursor UI / CLI 表示 = 公開境界、§1.2）
+.review/qna/<finding_id>/<NNN>.md への永続化は
+ShieldedPersistenceWriter（§3.3）が再度 shield_output を enforce
 structlog: qna_exchange (finding_id, turn, usage, ...)
 ```
 
@@ -1012,6 +1042,12 @@ uv run pytest -m "not integration"
 
 **セキュリティ検証**:
 - `AgentExecutor` を介さない LLM 呼出し経路が存在しないことを契約テストで保証
+- **境界 shield の完全性**（§1.2 Boundary-based Shielding）: 以下の契約テストで enforce する
+  - `test_persistence_boundary_shield.py`: `.review/checkpoints.sqlite` / `.review/artifacts/*.json` / `.review/conflicts/*.json` / `.review/qna/*` に書込まれる全バイト列に既知の秘匿パターン（テスト用 API キーダミー `sk-test-AEGIS-<uuid>`）が**現れない**ことを検証。fake LLM 応答で当該文字列を意図的に返させ、ディスク上のファイルを全文スキャン。
+  - `test_publish_boundary_shield.py`: `compose_report` が生成した `ReviewReportV2` の全テキストフィールドが `shield_output` を通過済み（`ShieldResult.allowed=True` かつ redaction 適用済み）であることを検証。gws 呼出しに渡す payload も同様。
+  - `test_executor_no_output_shield.py`: `AgentExecutor.invoke` の戻り値 `AgentResponse.text` には redaction が適用されていないことを確認（unredacted が resolver に届くことの回帰防止）。
+  - `test_resolver_full_context.py`: `SentinelResolver.resolve` 呼出し時の input findings に `[REDACTED]` 文字列が含まれないことを確認（秘匿パターンを模擬 finding に混入させ、resolver 入力側に到達することを確認）。
+  - `test_resume_degradation.py`: `aegis review-v2 --resume` で SqliteSaver から復元された state は shield 済み（`[REDACTED]` を含み得る）であることを記録し、裁定精度が低下し得る既知の挙動として明文化（回帰ではなく仕様）。
 - MCP サーバは stdio バインドのみ。TCP 公開は registry レベルで拒否
 - API キーはロガーで自動マスキング（`structlog` processor）
 
