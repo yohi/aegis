@@ -42,11 +42,13 @@ Aegisは **プロトコル・ファースト設計によるプラグインベー
 
 本システムは環境変数（または `.env` ファイル）による設定をサポートしています。主要な設定項目は以下の通りです：
 
+※ `AppConfig()` は空文字をデフォルトとするため、実際の検証はAPI呼び出し前に行われます。
+
 | 環境変数 | 説明 | デフォルト値 |
 | --- | --- | --- |
-| `LLM_REVIEW_SYNC_NOTEBOOK_ID` | 同期先となる NotebookLM の ID | (必須) |
-| `LLM_REVIEW_SYNC_DRIVE_FOLDER_ID` | コードベースをアップロードする Google Drive のフォルダ ID | (必須) |
-| `LLM_SECURITY_GCP_PROJECT_ID` | Model Armor 等を利用する GCP プロジェクト ID | (必須) |
+| `LLM_REVIEW_SYNC_NOTEBOOK_ID` | 同期先となる NotebookLM の ID | (API使用時に必須) |
+| `LLM_REVIEW_SYNC_DRIVE_FOLDER_ID` | コードベースをアップロードする Google Drive のフォルダ ID | (API使用時に必須) |
+| `LLM_SECURITY_GCP_PROJECT_ID` | Model Armor 等を利用する GCP プロジェクト ID | (API使用時に必須) |
 | `LLM_SECURITY_LOCATION` | GCP リソースのロケーション | `us-central1` |
 | `LLM_SECURITY_MODEL_ARMOR_TEMPLATE_ID` | 適用する Model Armor テンプレート ID | `default-shield` |
 
@@ -57,6 +59,10 @@ Aegisは **プロトコル・ファースト設計によるプラグインベー
 3. 依存関係の変更時や、自動セットアップがスキップされた場合は、手動で以下のコマンドを実行してください：
    ```bash
    pip install -e ".[dev]"
+   ```
+4. **外部ツールのインストール**: 本システムはレポート出力にサードパーティツール `gwscli` を使用します。事前にインストールしてパスを通してください。
+   ```bash
+   # 例: go install github.com/google/gwscli@latest
    ```
 
 ### For Humans (推奨)
@@ -82,7 +88,7 @@ https://github.com/yohi/aegis/blob/master/README.md
     *   `pip` を使用して、開発用依存関係をインストールしてください。
     *   `pip install -e ".[dev]"`
 2.  **[ ] 環境設定:**
-    *   必要な環境変数（`LLM_REVIEW_SYNC_NOTEBOOK_ID`, `LLM_SECURITY_GCP_PROJECT_ID` など）をヒアリングまたは構成から推測し、`.env` ファイルを作成して設定してください。
+    *   必要な環境変数（`LLM_REVIEW_SYNC_NOTEBOOK_ID`, `LLM_REVIEW_SYNC_DRIVE_FOLDER_ID`, `LLM_SECURITY_GCP_PROJECT_ID` など）をヒアリングまたは構成から推測し、`.env` ファイルを作成して設定してください。
 3.  **[ ] 動作確認:**
     *   テストを実行して、環境が正しく構築されているか確認してください。
     *   `pytest`

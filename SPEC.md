@@ -22,7 +22,7 @@ Aegis is an autonomous, multi-agent LLM code review system powered by NotebookLM
 ## 5. Sub-Agent Orchestration
 - **Communication Protocol**: Agents communicate exclusively through atomic file operations (the Write-then-Rename pattern) within a dedicated `.review/tasks` workspace, preventing race conditions.
 - **Task Messages**: Tasks are represented as Markdown files with structured YAML frontmatter (`task_id`, `sender`, `receiver`, `status`, etc.).
-- **Identifiers & Concurrency**: Task file names use a robust combination of dates and UUIDs (e.g., `TASK-YYYYMMDD-<uuid>-<sender>-to-<receiver>.md`). This simplifies concurrent operations and avoids ID collisions without relying on complex file locks.
+- **Identifiers & Concurrency**: Task file names use a robust combination of dates and short unique IDs (e.g., `TASK-YYYYMMDD-<8hex>-<sender>-to-<receiver>.md`). This simplifies concurrent operations and avoids ID collisions without relying on complex file locks.
 
 ## 6. Defensive Engineering & Validation
 - **Exception Hierarchy**: All errors inherit from a base `ReviewSystemError` to allow for consistent error boundaries and logging.

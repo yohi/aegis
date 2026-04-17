@@ -1,5 +1,5 @@
 # Aegis
-Last updated: 2026-04-17
+Last updated: 2026-04-16
 
 Autonomous multi-agent LLM code review system.
 
