@@ -11,7 +11,7 @@ Aegis is an autonomous, multi-agent LLM code review system powered by NotebookLM
 ## 3. Sync Pipeline (NotebookLM + Google Drive + gwscli)
 - Creates a Single Source of Truth (SSOT) by synchronizing the local codebase to NotebookLM.
 - **DriveClient**: Uploads source code to Google Drive and links those files into the target NotebookLM.
-- **ReportWriter**: Asynchronously shells out to `gwscli` to write human-readable review reports to Google Docs and operational metrics to Google Sheets.
+- **ReportWriter**: Asynchronously shells out to `gws` (Google Workspace CLI) to write human-readable review reports to Google Docs and operational metrics to Google Sheets.
 - Pre-filtering mechanisms ensure that oversized or binary files are skipped efficiently.
 
 ## 4. Cursor Rules Engine (.mdc)
