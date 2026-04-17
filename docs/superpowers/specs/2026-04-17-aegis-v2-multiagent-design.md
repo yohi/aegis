@@ -950,6 +950,24 @@ uv run pytest -m "not integration"
 | E2E | `aegis review-v2 --dry-run` | 小リポジトリで graph 全ノード通過、`.review/` 成果物検証 |
 | Security | secrets 偽装応答、パストラバーサル入力 | 必ず `SecurityBlockedError` または `[REDACTED]` に落ちる |
 
+**Edge case マトリクス**（必ず自動テストで検証、`tests/unit/v2/edge_cases/` 配下）:
+
+| # | カテゴリ | テスト入力 | 期待出力／挙動 |
+|---|---|---|---|
+| E1 | 巨大ファイル | `target_docs` に 500KB 超の単一ソースコード（`SyncConfig.max_file_size_kb=500` 境界） | `ingest/adapters/source_code.py` が `FileSizeExceededError` を `AgentFailure` として state に積む。他エージェントは継続。最終レポート §3 に「対象超過により未レビュー」を明記 |
+| E2 | 巨大ファイル | 20MB の PDF | pdf アダプタがページ単位ストリーム抽出に切替。`metadata.truncated=True` を付与、`structlog.warning("ingest_truncated", pages_processed=N, total_pages=M)` |
+| E3 | 巨大ファイル | 1,000 ファイルの一括投入 | `LLM_PROVIDER_MAX_CONCURRENT=4` を超えないこと、TaskGroup で全ファイル処理完了、`state.failures == []` |
+| E4 | サポート外フォーマット | `.rar` / `.exe` / `.zip` など `ingest/registry.py` 未登録の拡張子 | `UnsupportedFormatError` を投げ、レビュー全体は継続。当該ファイルは `ingested` から除外し、レポート §3 に「サポート外フォーマットにつきスキップ」を列挙 |
+| E5 | サポート外フォーマット | MIME 不明のバイナリ（`application/octet-stream`） | `ingest/resolver.py` が `FileTypeDetectionError` を返し、ユーザーに明示フォーマット指定を要求（CLI `--format` / UI プルダウン） |
+| E6 | NotebookLM との完全矛盾 | 対象コードが `if authenticated:` で分岐／NotebookLM が「認証前に権限チェック必須」と明記 | DOMAIN が `severity=high`, `authority_level=ABSOLUTE` で FindingV2 を生成。他ペルソナの反対意見は `detect_conflicts` で `domain_contradiction` として検出、`SentinelResolver` が `decision=override`, `winning_persona=DOMAIN`, `authority_level_applied=ABSOLUTE` を出力 |
+| E7 | NotebookLM との完全矛盾 | NotebookLM 抜粋が互いに矛盾（A 条項 vs B 条項） | `SourceExcerpt` を 2 件 state に保持。Sentinel が `decision=escalate` を返し、`next_steps` に「NotebookLM §A と §B の優先順位を発注元に確認」を追記 |
+| E8 | 空ファイル | 0 バイトの target、空の NotebookLM | `FindingV2` は生成されず、レポート §1 に「レビュー対象に実質コンテンツなし」、status は `completed_pending_approval`（failed ではない） |
+| E9 | Drive アクセス不能 | 共有権限のない Drive URL | `ingest/resolver.py` が `DriveAccessDeniedError`、`structlog.error("drive_access_denied", url=<masked>, correlation_id=...)`、該当ドキュメントのみレビューから除外。他資料のレビューは継続 |
+| E10 | 循環参照 | 関連文書 A が B を参照、B が A を参照 | `ingest/resolver.py` が訪問済みセットで検知、2 回目の参照を無視、`structlog.info("ingest_cycle_skipped", doc_id=...)` |
+| E11 | Shield ブロック | user が意図的に「APIキーっぽい文字列」を含むコードを投入 | `shield_input` が `ShieldResult.allowed=False` を返し `SecurityBlockedError`。対象ファイルのみブロック、他ファイルのレビューは継続。レポート §3 に「セキュリティシールド遮断」を明示 |
+| E12 | 過去指摘との重複 | `prior_form` に同一箇所の既解決コメントあり／新規エージェントが類似 Finding を生成 | `FindingV2.relates_to_prior` に PriorReviewComment の識別子を自動紐付け。非機能要件「重複率 ≤ 5%」を満たすこと |
+| E13 | Provider feature 欠落 | OpenAI provider で `CacheHint` と `ReasoningConfig.mode="adaptive"` を同時指定 | 例外を投げず、`supports()=False` で silently degrade。`structlog.info("provider_feature_unavailable", feature=..., fallback=...)` を各機能ごとに 1 件記録。最終 FindingV2 集合は Anthropic 実行時と Jaccard ≥ 0.85 |
+
 **非機能要件テスト**（主目的の指標化）:
 
 | 指標 | 閾値 | 測定方法 |
@@ -969,15 +987,32 @@ uv run pytest -m "not integration"
 - MCP サーバは stdio バインドのみ。TCP 公開は registry レベルで拒否
 - API キーはロガーで自動マスキング（`structlog` processor）
 
-### 7.6 オープン課題
+### 7.6 オープン課題と実行時フォールバック
 
-1. Claude Opus 4.7 の `output_config.effort` パラメータは、公式 SDK が正式対応前の場合 `extra_body` 送信を要検証（SDK 版数依存）
-2. LangGraph `Send` API を使った fan-out 並列は v0.2 系で stable だが、devcontainer 並列度上限と LLM provider rate limit の相互作用は実測で調整
-3. NotebookLM Python クライアント（`notebooklm-py`）のクエリ応答 schema は公式未確定のため、`InformationSource` 実装は薄いアダプタに留め、変更時影響を最小化
-4. Cursor の sub-agent API 仕様（並列起動・引数受け渡し）は Cursor 版数依存。`.cursor/rules/*.mdc` のフロントマター（`applyTo` / `spawn_as` 等）は版数確認後に確定
-5. Cursor 経由の LLM 呼出しは usage/token がプログラム的には限定的にしか取得できない。Automation 経路と Interactive 経路の監査粒度差を運用手順書に明記する必要あり
-6. 画像／スキャン PDF の OCR は MCP ツール経由で Vision モデルを呼ぶ予定だが、Vision モデルの provider 抽象化（Anthropic Vision / OpenAI Vision / Gemini Vision 等）は本設計書ではスコープ外（将来拡張）
-7. レビュー依頼票の Excel/Sheet フォーマットは組織ごとにカラム配置が異なる可能性があるため、`adapters/office.py` 内に設定可能な **カラムマッピング YAML** を用意する方針とする（詳細は実装計画）
+各課題について、実装計画で確定させるべき調査事項と、未解決のまま本番運用に入った場合の **実行時フォールバック** を併記する。
+
+1. **Claude Opus 4.7 の `output_config.effort` パラメータ**: 公式 SDK が正式対応前の場合 `extra_body` 経由で送信する必要があり、API 側が拒否するリスクがある。
+   - **回避策**: `AnthropicProvider.__init__` 時に `feature_probe()` を 1 回実行し、`extra_body={"output_config":{"effort":"xhigh"}}` を含めたダミー 1 トークン呼出しを投げる。`BadRequestError` で失敗した場合は当該 provider インスタンスの `_supports_effort=False` を立て、以降の呼出しでは `extra_body` を **含めずに** `reasoning` を送る。結果は `structlog.warning("provider_feature_probe_failed", feature="reasoning_effort", fallback="default")` で記録し、`provider.supports(ProviderFeature.REASONING_EFFORT)` が `False` を返すようになる。
+   - **SDK ピン留め**: `pyproject.toml` で `anthropic>=0.40,<1.0` に固定し、`uv.lock` で再現性を担保。マイナー更新は dev で手動検証後のみ反映。
+
+2. **LangGraph `Send` 並列と LLM rate limit の干渉**: 並列起動した 4–5 ペルソナが同時に provider を叩き、`RateLimitError` を誘発する可能性。
+   - **回避策**: `AgentExecutor` に共通 `AsyncSemaphore(LLM_PROVIDER_MAX_CONCURRENT)` を持たせ、`complete()` 呼出し直前で `acquire`。さらに **動的縮退**：`RateLimitError` を 1 回検知すると `max_concurrent` を半減し、60 秒間連続成功で元に戻す。`RetryConfig` は指数バックオフ（initial 1.0s → max 60s、5 回）。5 回失敗したペルソナは `AgentFailure` として state に積み、全体は継続。
+   - **観測**: `structlog.warning("provider_rate_limit", current_concurrency=N, backoff_seconds=...)` をメトリクス化し、閾値超過で CI を fail させる。
+
+3. **`notebooklm-py` のクエリ応答 schema 未確定**: クライアント側 schema が変更されると DOMAIN エージェントが壊れる。
+   - **回避策**: `src/v2/sources/notebook.py` に `NotebookLMResponseV1` Pydantic モデルを定義し、受信レスポンスを **必ず validate**。検証失敗時は `SourceSchemaError` を投げ、当該クエリのみ失敗扱い（DOMAIN 全体は継続、他ソースへフォールバック）。`structlog.error("notebook_schema_mismatch", expected_version="v1", raw_keys=[...])` で差分ログを残し、schema 再適合の手がかりにする。
+   - **契約テスト**: `tests/integration/test_notebook_contract.py` を `@integration` で週次 CI 実行し、本番スキーマの drift を早期検知。
+
+4. **Cursor sub-agent API の版数依存**: `spawn_as` / `applyTo` フロントマターの仕様が Cursor 版数で変わる可能性。
+   - **回避策**: Interactive 経路で Cursor の並列 sub-agent 起動に失敗した場合、`.cursor/rules/aegis-sentinel.mdc` が **逐次実行フォールバック**（Sentinel が 4 ペルソナを順次呼び出す）にデグレード。機能は維持、所要時間のみ増加。Cursor プラグインは `.review/status.json` の `phase=fan_out` でタイムアウト（既定 30s 未着手）を検知し、自動で逐次モードに切替。
+   - **運用**: サポート対象 Cursor バージョンを `cursor-extension/package.json` の `engines.cursor` に明記し、未対応バージョンではプラグインが起動時に警告ダイアログを出す。
+
+5. **Cursor 経由の usage/token がプログラム的に取れない**: Interactive 経路の監査粒度が Automation より粗い。
+   - **回避策**: Interactive 経路では LLM 呼出しごとに **canary マーカー**（例: `AEGIS_AUDIT_<uuid>`）を system prompt 末尾に挿入させ、MCP 側 `submit_finding` 時にマーカーの存在を検査。存在しない応答は「出所不明」として `audit_integrity=unverified` フラグを付ける。CI 自動レビューなど高信頼要件では `--mode=automation` を強制し、Interactive 経路は使わない運用を推奨。監査粒度差は `docs/v2/audit-profile.md`（実装計画時に作成）に明記。
+
+6. **レビュー依頼票の Excel/Sheet カラム配置差**: 組織ごとにフォーマットが異なる。
+   - **回避策**: `src/v2/ingest/adapters/office.py` に **カラムマッピング YAML**（`config/review_form_templates/<org>.yaml`）を用意し、未知カラムは無視、必須カラム欠落時は `PriorFormSchemaError` で明示失敗。既定テンプレ（`default.yaml`）は本設計書 §0.2 のフィールドを採用。ユーザー提示済みの全カラム（コメント者／箇所／コメント区分／バグ区分／バグ現象／バグ原因／重要度／回答者／回答日／回答内容／確認者／確認日）を既定でカバー。
+   - **フォールバック**: テンプレ未マッチ時は先頭 1 行をヘッダと見なしてベストエフォート抽出し、`structlog.warning("prior_form_schema_unknown", unmatched_columns=[...])` を出した上で取り込み可能な列のみ `PriorReviewComment` に格納する（レビューは継続）。
 
 ---
 
