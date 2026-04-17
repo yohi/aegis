@@ -1,4 +1,4 @@
-"""Write review results to Google Workspace via gwscli."""
+"""Write review results to Google Workspace via gws."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 
 
 class ReportWriter:
-    """Write review results to Google Workspace via gwscli."""
+    """Write review results to Google Workspace via gws."""
 
     def _validate_arg(self, arg: str) -> str:
         """Validate argument to prevent flag injection."""
@@ -27,7 +27,7 @@ class ReportWriter:
         self._validate_arg(template_id)
 
         report_content = self._format_report(result)
-        stdout = await self._run_gwscli(
+        stdout = await self._run_gws(
             "docs",
             "create",
             "--title",
@@ -42,15 +42,18 @@ class ReportWriter:
         try:
             parsed = json.loads(stdout)
         except json.JSONDecodeError as exc:
-            logger.error("Failed to parse gwscli output", output=stdout, error=str(exc))
-            raise RuntimeError(f"Invalid JSON from gwscli: {exc}") from exc
+            # Sanitize output before logging to prevent leaking sensitive data
+            sanitized = stdout[:100] + "..." if len(stdout) > 100 else stdout
+            logger.error("Failed to parse gws output", output_summary=sanitized, error=str(exc), correlation_id=result.request_id)
+            raise RuntimeError(f"Invalid JSON from gws: {exc}") from exc
 
         doc_id = parsed.get("id")
         if not doc_id:
-            logger.error("gwscli output missing 'id'", output=stdout)
-            raise ValueError("gwscli create failed: output missing 'id'")
+            sanitized = stdout[:100] + "..." if len(stdout) > 100 else stdout
+            logger.error("gws output missing 'id'", output_summary=sanitized, correlation_id=result.request_id)
+            raise ValueError("gws create failed: output missing 'id'")
 
-        logger.info("Report written to Google Docs", doc_id=doc_id)
+        logger.info("Report written to Google Docs", doc_id=doc_id, correlation_id=result.request_id)
         return str(doc_id)
 
     async def append_metrics_sheet(self, result: ReviewResult, sheet_id: str) -> None:
@@ -64,7 +67,7 @@ class ReportWriter:
                 "finding_count": len(result.findings),
             }
         )
-        await self._run_gwscli(
+        await self._run_gws(
             "sheets",
             "append",
             "--spreadsheet-id",
@@ -73,7 +76,7 @@ class ReportWriter:
             row_data,
             correlation_id=result.request_id,
         )
-        logger.info("Metrics appended to sheet", sheet_id=sheet_id)
+        logger.info("Metrics appended to sheet", sheet_id=sheet_id, correlation_id=result.request_id)
 
     def _format_report(self, result: ReviewResult) -> str:
         """Format ReviewResult as a human-readable report."""
@@ -93,37 +96,39 @@ class ReportWriter:
             )
         return "\n".join(lines)
 
-    async def _run_gwscli(self, *args: str, timeout: float = 30.0, correlation_id: str | None = None) -> str:
-        """Run gwscli command asynchronously with timeout and robust error handling."""
+    async def _run_gws(self, *args: str, correlation_id: str, timeout: float = 30.0) -> str:
+        """Run gws command asynchronously with mandatory correlation_id and timeout handling."""
         try:
             # Note: Static analysis requires literal string here for security
-            proc = await asyncio.create_subprocess_exec("gwscli", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)  # nosec B603 # nosemgrep # noqa: E501
+            proc = await asyncio.create_subprocess_exec("gws", *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)  # nosec B603 # nosemgrep # noqa: E501
         except FileNotFoundError as exc:
-            logger.error("gwscli not found", error=str(exc), correlation_id=correlation_id)
-            raise RuntimeError("gwscli is not installed or not in PATH") from exc
+            logger.error("gws not found", error=str(exc), correlation_id=correlation_id)
+            raise RuntimeError("gws is not installed or not in PATH") from exc
 
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
             proc.kill()
-            await proc.communicate()  # Clean up process
+            # Clean up process and capture what was written to pipes before kill
+            stdout, stderr = await proc.communicate()
+            err_summary = stderr.decode()[:200] + "..." if stderr else "N/A"
             logger.error(
-                "gwscli timed out",
+                "gws timed out",
                 timeout=timeout,
-                stdout="***",
-                stderr="***",
                 correlation_id=correlation_id,
+                stderr_summary=err_summary,
             )
-            raise TimeoutError(f"gwscli timed out after {timeout}s") from None
+            raise TimeoutError(f"gws timed out after {timeout}s") from None
 
         if proc.returncode != 0:
-            err_msg = stderr.decode()
+            # Decode and truncate stderr for safe diagnostic logging
+            err_summary = stderr.decode()[:200] + "..." if stderr else "N/A"
             logger.error(
-                "gwscli failed",
+                "gws failed",
                 exit_code=proc.returncode,
-                stderr="***",
                 correlation_id=correlation_id,
+                stderr_summary=err_summary,
             )
-            raise RuntimeError(f"gwscli failed (exit {proc.returncode})")
+            raise RuntimeError(f"gws failed (exit {proc.returncode})")
 
         return stdout.decode()

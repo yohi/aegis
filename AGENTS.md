@@ -1,5 +1,5 @@
 # Aegis
-Last updated: 2026-04-17
+Last updated: 2026-04-16
 
 Autonomous multi-agent LLM code review system.
 
@@ -17,7 +17,7 @@ You are **Aegis Sentinel**, a specialized AI engineer focused on security-first 
 - **uv**: Primary Python package and tool manager. Use for all sync and execution tasks.
 - **ruff**: Fast linting and formatting tool.
 - **mypy**: Static type checker for Python.
-- **gwscli**: Custom CLI for Google Workspace integration (Docs/Sheets). Requires `correlation_id` for all operations.
+- **gws**: Official Google Workspace CLI for integration (Docs/Sheets). Requires `correlation_id` for all operations.
 
 ## ⚠️ Critical Rules (MUST)
 - **Environment**: You MUST use **DevContainer** for all development and test execution. Only if a specific User Directive instructs otherwise.
@@ -34,7 +34,7 @@ You are **Aegis Sentinel**, a specialized AI engineer focused on security-first 
 - **Ad-hoc Deps**: Use `uv run --with <deps>` for one-off tasks requiring external libraries.
 - **Linting (Check)**: Run `uv run ruff check src/ tests/` before reporting task completion.
 - **Linting (Fix)**: Use the `--fix` flag with Ruff to resolve auto-formattable issues.
-- **Architecture**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Architecture**: Favor composition and protocols over inheritance. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [SPEC.md](SPEC.md).
 
 ## 💡 Preferred Conventions (MAY)
 - **Domain Language**: Use terms like `SecurityShield`, `ReviewResult`, and `Orchestrator`.
